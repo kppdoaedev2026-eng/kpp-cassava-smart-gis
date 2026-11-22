@@ -344,7 +344,8 @@ KPP.App = (function () {
     const vt = {}; rows.forEach((r) => Object.entries(r.varieties).forEach(([k, v]) => { vt[k] = (vt[k] || 0) + v; }));
     const cmdT = {}; rows.forEach((r) => { const u = DA.agg(2569, { tambon: r.code }); cmdT[r.code] = u.cmdPct; });
     return card2('แปลงส่งเสริมมันสำปะหลังพันธุ์ต้านทาน-ทนทาน (โครงการ 2569)', srcBadge('PROJECT'), `<div class="kv" style="margin-bottom:8px"><span>จำนวนแปลง / พื้นที่</span><b>${U.fmt(sum('plots'))} แปลง · ${U.fmt(sum('rai'), 1)} ไร่</b>
-      <span>ท่อนพันธุ์ที่แจกจ่าย</span><b>${U.fmt(sum('cuttings'))} ท่อน</b><span>พันธุ์</span><b>${Object.entries(vt).sort((a, b) => b[1] - a[1]).map(([k, v]) => U.esc(k) + ' ' + U.fmt(v, 1) + ' ไร่').join(' · ')}</b>
+      <span>ท่อนพันธุ์ที่แจกจ่าย</span><b>${U.fmt(sum('cuttings'))} ท่อน</b><span>พันธุ์</span><b>${Object.entries(vt).sort((a, b) => b[1] - a[1]).map(([k, v]) => { const vc = C.VARIETY_CLASSES.find((x) => x.key === DA.varietyClass(k)); return `${U.esc(k)} ${U.fmt(v, 1)} ไร่ <span class="vclass-chip" style="background:${vc.color}">${vc.label}</span>`; }).join(' · ')}</b>
+      <span>พื้นที่พันธุ์ต้านทานในแปลงส่งเสริม</span><b>${U.fmt(Object.entries(vt).filter(([k]) => DA.varietyClass(k) === 'resistant').reduce((x, [, v]) => x + v, 0), 1)} ไร่ (${U.pct(U.safeDiv(Object.entries(vt).filter(([k]) => DA.varietyClass(k) === 'resistant').reduce((x, [, v]) => x + v, 0), sum('rai')), 0)})</b>
       <span>พบอาการ CMD/SLCMV ในแปลงโครงการ</span><b>${U.fmt(sum('cmd'))} แปลง</b></div>
       <div class="table-wrap"><table class="risk" data-click><thead><tr><th>ตำบล</th><th>อำเภอ</th><th>แปลง</th><th>ไร่</th><th>ท่อนพันธุ์</th><th>พันธุ์</th><th>ระบบน้ำ</th><th>ระบาดในตำบล*</th></tr></thead><tbody>${
       rows.map((r) => `<tr data-code="${r.code}"><td>${U.esc(r.name)}</td><td class="l">${U.esc(r.dn)}</td><td>${r.plots}</td><td>${U.fmt(r.rai, 1)}</td><td>${U.fmt(r.cuttings)}</td>

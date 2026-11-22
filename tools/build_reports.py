@@ -144,7 +144,10 @@ if f:
         for key, col in [('varieties', 'พันธุ์'), ('projects', 'โครงการ'), ('status', 'สถานะ'), ('soil', 'ความเหมาะสมดิน'), ('irrigation', 'ระบบให้น้ำ'), ('assessed', 'ผลประเมิน')]:
             v = rr.get(col)
             if isinstance(v, str) and v.strip():
-                t[key][v.strip()] = t[key].get(v.strip(), 0) + (rai if key == 'varieties' else 1)
+                v = v.strip()
+                if key == 'varieties':   # คละพันธุ์ = คละพันธุ์อิทธิ 1, 2, 3 (พันธุ์ต้านทาน)
+                    v = {'คละพันธุ์': 'คละพันธุ์อิทธิ 1–3', 'อิทธิ': 'อิทธิ (ไม่ระบุเบอร์)'}.get(v, v)
+                t[key][v] = t[key].get(v, 0) + (rai if key == 'varieties' else 1)
         if str(rr.get('CMD/SLCMV', '')).strip() == 'ใช่':
             t['cmd'] += 1
     tot = {'plots': sum(t['plots'] for t in tam.values()), 'rai': round(sum(t['rai'] for t in tam.values()), 2), 'cuttings': sum(t['cuttings'] for t in tam.values()),
