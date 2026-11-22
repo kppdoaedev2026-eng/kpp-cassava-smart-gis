@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="th" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cassava Smart GIS กำแพงเพชร</title>
+<meta name="description" content="ระบบแผนที่อัจฉริยะและแดชบอร์ดบริหารจัดการมันสำปะหลังจังหวัดกำแพงเพชร สำนักงานเกษตรจังหวัดกำแพงเพชร กรมส่งเสริมการเกษตร">
+<link rel="icon" href="assets/img/logo-doae.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700&family=Sarabun:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="vendor/leaflet.css">
+<link rel="stylesheet" href="vendor/MarkerCluster.css">
+<link rel="stylesheet" href="css/app.css?v=2.0.0">
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <div class="brand">
+      <img class="logo" src="assets/img/logo-doae.png" alt="ตรากรมส่งเสริมการเกษตร" width="46" height="48">
+      <img class="logo" src="assets/img/seal-kpp.png" alt="ตราจังหวัดกำแพงเพชร" width="46" height="46">
+      <div class="brand-text">
+        <h1>ระบบแผนที่อัจฉริยะมันสำปะหลัง จังหวัดกำแพงเพชร</h1>
+        <p>Kamphaeng Phet Cassava Smart GIS · สำนักงานเกษตรจังหวัดกำแพงเพชร · <span id="asof"></span></p>
+      </div>
+    </div>
+    <div class="actions">
+      <span class="year-pill pres-only" id="presYear"></span>
+      <button class="btn admin-only" id="btnImport">📥 นำเข้าข้อมูล</button>
+      <div class="menu admin-only">
+        <button class="btn" id="btnExport" aria-haspopup="true">⬇ ส่งออก</button>
+        <div class="menu-list" id="exportMenu" hidden>
+          <button data-export="pdf">รายงานผู้บริหาร (PDF)</button>
+          <button data-export="atlas">ชุดแผนที่โรคใบด่าง (PNG)</button>
+          <button data-export="png">ภาพแดชบอร์ด (PNG)</button>
+          <button data-export="xlsx">สรุปข้อมูล (Excel)</button>
+          <button data-export="geojson">ชั้นข้อมูลอำเภอ (GeoJSON)</button>
+        </div>
+      </div>
+      <button class="btn icon" id="btnTheme" title="สลับโหมดสว่าง/มืด" aria-label="สลับธีม">◐</button>
+      <button class="btn icon" id="btnAbout" title="เกี่ยวกับระบบ" aria-label="เกี่ยวกับระบบ">ⓘ</button>
+      <button class="btn primary" id="btnPresent" title="โหมดนำเสนอผู้บริหาร">▶ โหมดนำเสนอ</button>
+    </div>
+  </header>
+
+  <nav class="modbar">
+    <div class="modules" role="tablist" aria-label="โมดูล">
+      <button class="mod active" data-mod="overview" role="tab"><span>📊</span>ภาพรวมผู้บริหาร</button>
+      <button class="mod" data-mod="cmd" role="tab"><span>🦠</span>การจัดการโรคใบด่าง</button>
+      <button class="mod" data-mod="rootrot" role="tab"><span>🍂</span>รากเน่าโคนเน่า</button>
+      <button class="mod" data-mod="soil" role="tab"><span>🟫</span>ความเหมาะสมดิน LDD</button>
+    </div>
+    <div class="filters" role="group" aria-label="ตัวกรองข้อมูล">
+      <label class="fld"><span>ปีเพาะปลูก</span><select id="fYear"></select></label>
+      <label class="fld"><span>อำเภอ</span><select id="fDistrict"></select></label>
+      <label class="fld"><span>ตำบล</span><select id="fTambon" disabled></select></label>
+      <label class="fld admin-only"><span>โรค/ศัตรูพืช</span><select id="fDisease"></select></label>
+      <label class="fld admin-only"><span>ระดับ</span><select id="fRisk">
+        <option value="all">ทุกระดับ</option><option value="critical">วิกฤต</option><option value="serious">สูง</option><option value="warning">ปานกลาง</option><option value="good">ต่ำ</option></select></label>
+      <button class="btn ghost sm" id="btnReset" title="ล้างตัวกรอง">ล้างตัวกรอง</button>
+    </div>
+  </nav>
+
+  <section class="kpis" id="kpis" aria-label="ตัวชี้วัดหลัก"></section>
+
+  <main class="main">
+    <section class="map-wrap">
+      <div id="map" role="application" aria-label="แผนที่"></div>
+      <div class="crumb" id="crumb"></div>
+      <div class="metric-switch" id="metricSwitch"></div>
+      <aside class="layer-panel" id="layerPanel">
+        <div class="lp-head"><strong>ชั้นข้อมูล</strong><button class="btn icon sm" id="lpToggle" aria-label="ย่อ/ขยาย">–</button></div>
+        <div class="lp-body" id="lpBody"></div>
+      </aside>
+      <div class="legend" id="legend"></div>
+    </section>
+
+    <section class="side" id="side">
+      <nav class="tabs" role="tablist" id="sideTabs"></nav>
+      <div class="side-body" id="sideBody"></div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="credit">
+      <img src="assets/img/logo-doae.png" alt="" width="22" height="23"><img src="assets/img/seal-kpp.png" alt="" width="22" height="22">
+      <span>พัฒนาโดย <b id="devName"></b> · <span id="devUnit"></span> · v<span id="appVer"></span></span>
+    </div>
+    <span class="admin-only">แหล่งข้อมูล: <span id="footSources"></span></span>
+  </footer>
+</div>
+
+<!-- CMD Atlas -->
+<div class="modal atlas" id="atlasModal" hidden role="dialog" aria-modal="true" aria-labelledby="atlasTitle">
+  <div class="modal-card wide">
+    <div class="modal-h">
+      <h2 id="atlasTitle">🗺️ ชุดแผนที่วิเคราะห์พื้นที่การจัดการโรคใบด่างมันสำปะหลัง <small id="atlasSub"></small></h2>
+      <div class="row-gap">
+        <button class="btn" id="btnAtlasPng">⬇ PNG</button>
+        <button class="btn" id="btnAtlasPdf">⬇ PDF</button>
+        <button class="btn icon" data-close aria-label="ปิด">✕</button>
+      </div>
+    </div>
+    <div class="atlas-grid" id="atlasGrid"></div>
+  </div>
+</div>
+
+<!-- About -->
+<div class="modal" id="aboutModal" hidden role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+  <div class="modal-card narrow">
+    <div class="modal-h"><h2 id="aboutTitle">เกี่ยวกับระบบ</h2><button class="btn icon" data-close aria-label="ปิด">✕</button></div>
+    <div class="modal-b" id="aboutBody"></div>
+  </div>
+</div>
+
+<!-- Data Import Studio -->
+<div class="modal" id="importModal" hidden role="dialog" aria-modal="true" aria-labelledby="impTitle">
+  <div class="modal-card">
+    <div class="modal-h">
+      <h2 id="impTitle">📥 นำเข้าและอัปเดตชั้นข้อมูล <small>Data Import Studio</small></h2>
+      <button class="btn icon" data-close aria-label="ปิด">✕</button>
+    </div>
+    <nav class="tabs" id="impTabs">
+      <button class="tab active" data-itab="table">ตาราง CSV / Excel</button>
+      <button class="tab" data-itab="spatial">ชั้นข้อมูลเชิงพื้นที่</button>
+      <button class="tab" data-itab="varieties">พันธุ์ &amp; ตั้งค่า</button>
+      <button class="tab" data-itab="templates">แม่แบบ</button>
+      <button class="tab" data-itab="manage">ข้อมูลที่นำเข้า</button>
+    </nav>
+    <div class="modal-b">
+      <div class="itab active" id="itab-table">
+        <label class="drop" id="dropTable">
+          <input type="file" id="fileTable" accept=".csv,.xlsx,.xls" hidden>
+          <strong>ลากไฟล์ .csv / .xlsx มาวาง</strong> หรือคลิกเพื่อเลือก
+          <span class="hint">ระบบจับคู่คอลัมน์อัตโนมัติ: ปี, อำเภอ, ตำบล, หมู่บ้าน, พื้นที่ปลูก, พื้นที่ระบาด, พันธุ์ต้านทาน, พิกัด Lat/Lng หรือ UTM</span>
+        </label>
+        <div id="mapStep" hidden>
+          <div class="row-between">
+            <div><strong id="impFileName"></strong> · <span id="impRowCount"></span></div>
+            <label class="fld inline"><span>ปีเริ่มต้น (ถ้าไม่มีคอลัมน์ปี)</span><input type="number" id="impDefaultYear" min="2550" max="2600"></label>
+            <label class="fld inline"><span>โซน UTM เริ่มต้น</span><select id="impZone"><option>47</option><option>48</option></select></label>
+          </div>
+          <div class="table-wrap map-grid" id="mapGrid"></div>
+          <div class="table-wrap preview" id="previewGrid"></div>
+          <div class="row-between">
+            <span class="hint" id="impValidation"></span>
+            <button class="btn primary" id="btnDoImport">นำเข้าและอัปเดตแผนที่</button>
+          </div>
+        </div>
+      </div>
+      <div class="itab" id="itab-spatial">
+        <label class="drop" id="dropSpatial">
+          <input type="file" id="fileSpatial" accept=".geojson,.json,.zip,.kml" hidden>
+          <strong>ลากไฟล์ GeoJSON / Shapefile (.zip) / KML มาวาง</strong> หรือคลิกเพื่อเลือก
+          <span class="hint">พิกัด UTM 47N/48N ในไฟล์ GeoJSON จะถูกแปลงเป็น WGS84 อัตโนมัติ</span>
+        </label>
+        <div class="spatial-opts">
+          <label class="fld"><span>ใช้เป็น</span><select id="spatialRole">
+            <option value="custom">ชั้นข้อมูลทั่วไป</option>
+            <option value="flood">ขอบเขตน้ำท่วมซ้ำซาก (คำนวณพื้นที่ทับซ้อนใหม่)</option>
+            <option value="clean">แปลงพันธุ์สะอาด / แปลงพันธุ์ต้านทาน</option>
+            <option value="soil">ความเหมาะสมของดิน (S1/S2/S3/N)</option>
+          </select></label>
+          <label class="fld"><span>สีชั้นข้อมูล</span><input type="color" id="spatialColor" value="#0e7490"></label>
+        </div>
+      </div>
+      <div class="itab" id="itab-varieties">
+        <div class="var-head">
+          <div>
+            <h3>การจัดกลุ่มพันธุ์มันสำปะหลังต่อโรคใบด่าง</h3>
+            <p class="hint">ต้านทาน · ทนทาน · ค่อนข้างอ่อนแอ (ค่าเริ่มต้นของพันธุ์อื่นๆ) · อ่อนแอ (รวมพันธุ์ไม่รับรอง/ไม่ระบุ) — ชื่อพันธุ์จับคู่อัตโนมัติ เช่น KU50 = เกษตรศาสตร์ 50, CMR 89 = พันธุ์ 89</p>
+          </div>
+          <div class="add-var">
+            <input type="text" id="newVarName" placeholder="ชื่อพันธุ์ใหม่ เช่น อิทธิ 4">
+            <select id="newVarClass"></select>
+            <button class="btn" id="btnAddVar">+ เพิ่มพันธุ์</button>
+          </div>
+        </div>
+        <div class="variety-list" id="varietyList"></div>
+        <div class="row-between">
+          <label class="fld inline"><span>ราคามันสำปะหลัง (บาท/กก.) ประเมินมูลค่าความเสียหาย</span><input type="number" step="0.05" id="setPrice"></label>
+          <div class="row-gap"><button class="btn" id="btnResetVar">คืนค่าเริ่มต้น</button><button class="btn primary" id="btnSaveSettings">บันทึกและคำนวณใหม่</button></div>
+        </div>
+      </div>
+      <div class="itab" id="itab-templates">
+        <div class="card flat">
+          <h3>แม่แบบสำหรับเจ้าหน้าที่</h3>
+          <p class="hint">ดาวน์โหลด กรอกข้อมูลผลสำรวจ แล้วนำเข้าที่แท็บแรก</p>
+          <div class="btn-row">
+            <button class="btn" data-tpl="csv">แม่แบบ CSV ผลสำรวจรายตำบล/หมู่บ้าน</button>
+            <button class="btn" data-tpl="xlsx">แม่แบบ Excel (.xlsx)</button>
+            <button class="btn" data-tpl="geojson">แม่แบบ GeoJSON จุดสำรวจโรค</button>
+          </div>
+        </div>
+      </div>
+      <div class="itab" id="itab-manage">
+        <div id="importList"></div>
+        <button class="btn danger" id="btnClearImports">ล้างข้อมูลที่นำเข้าทั้งหมด</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toasts" aria-live="polite"></div>
+<div id="busy" hidden><div class="spinner"></div><span id="busyText">กำลังประมวลผล…</span></div>
+<div id="reportHost" aria-hidden="true"></div>
+
+<script src="vendor/leaflet.js"></script>
+<script src="vendor/markercluster.js"></script>
+<script src="vendor/leaflet-heat.js"></script>
+<script src="vendor/chart.umd.min.js"></script>
+<script src="vendor/papaparse.min.js"></script>
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="vendor/shp.min.js"></script>
+<script src="vendor/togeojson.umd.js"></script>
+<script src="vendor/proj4.js"></script>
+<script src="vendor/html2canvas.min.js"></script>
+<script src="vendor/jspdf.umd.min.js"></script>
+<script src="data/geo.js?v=2.0.0"></script>
+<script src="data/stats.js?v=2.0.0"></script>
+<script src="data/parcels.js?v=2.0.0"></script>
+<script>/* ข้อมูลรายแปลงละเอียดใช้เฉพาะเครื่องภายใน (data/private/ ไม่ถูกเผยแพร่) */
+  if (location.protocol === 'file:' || /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) document.write('<script src="data/private/parcels.js?v=2.0.0" onerror="this.remove()"><\/script>');</script>
+<script src="data/networks.js?v=2.0.0"></script>
+<script src="data/flood.js?v=2.0.0"></script>
+<script src="data/ldd_soil.js?v=2.0.0"></script>
+<script src="js/config.js?v=2.0.0"></script>
+<script src="js/utils.js?v=2.0.0"></script>
+<script src="js/data.js?v=2.0.0"></script>
+<script src="js/map.js?v=2.0.0"></script>
+<script src="js/charts.js?v=2.0.0"></script>
+<script src="js/importer.js?v=2.0.0"></script>
+<script src="js/exporter.js?v=2.0.0"></script>
+<script src="js/app.js?v=2.0.0"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+# ข้อมูลต้นทาง/ข้อมูลรายแปลงที่อาจระบุตัวบุคคลได้ — ห้าม commit
+*.xlsx
+*.xls
+data/private/
+data/source/*.pdf
+# local tooling
+.claude/
+__pycache__/
+*.pyc
