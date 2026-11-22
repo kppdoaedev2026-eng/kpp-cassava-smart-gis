@@ -58,7 +58,7 @@ KPP.Charts = (function () {
   function overview(S) {
     const units = unitsFor(S, 11);
     const P = PAL();
-    setHtml('cmpLegend', legendHtml([[P.planted, 'พื้นที่ปลูก (ทะเบียน)'], [P.green, 'ต้านทาน+ทนทาน'], [P.red, 'ระบาดใบด่าง (รายงาน)']]));
+    setHtml('cmpLegend', legendHtml([[P.planted, 'พื้นที่ปลูก (ทะเบียน)'], [P.green, 'ต้านทาน+ทนทาน'], [P.red, 'ระบาดใบด่าง (รายงานรายอำเภอ)']]));
     const o = hBar(baseOpts());
     o.plugins.tooltip.callbacks = { label: (ctx) => ` ${ctx.dataset.label}: ${U.fmt(ctx.raw)} ไร่`, afterBody: (it) => { const u = units[it[0].dataIndex]; return [`ระบาด ${U.pct(u.cmdPct)} · ต้านทาน+ทนทาน ${U.pct(u.resistPct)}`, 'คลิกเพื่อเจาะลึก']; } };
     o.onClick = clickUnit(S, units); o.onHover = pointer;
@@ -89,6 +89,19 @@ KPP.Charts = (function () {
     ] }, options: o });
   }
 
+  /** แนวโน้มการระบาดตามรอบรายงาน (ทุก 2 สัปดาห์ / รายเดือน) */
+  function cmdHistory(S) {
+    const h = DA.D.rep.cmd_history || [];
+    const pick = (x) => (S.district ? x.districts[S.district] : x);
+    const pts = h.map((x) => { const v = pick(x); return v ? { end: x.end, cmd: v.cmd, pct: v.standing ? (100 * v.cmd) / v.standing : null, farmers: v.farmers } : null; }).filter(Boolean);
+    setHtml('histNote', (S.district ? 'อ.' + DA.D.dByCode[S.district].name : 'ทั้งจังหวัด') + ` · ${pts.length} รอบรายงาน` + (pts.length < 2 ? ' — กราฟแนวโน้มจะแสดงเมื่อมีรายงานตั้งแต่ 2 รอบขึ้นไป' : ''));
+    const o = baseOpts(); o.interaction = { mode: 'index', intersect: false };
+    o.scales.y.ticks.callback = (v) => U.fmt(v, 0) + '%'; o.scales.y.beginAtZero = true; o.scales.x.grid.display = false;
+    o.plugins.tooltip.callbacks = { label: (ctx) => { const p = pts[ctx.dataIndex]; return ` ${U.fmt(p.pct, 1)}% · ${U.fmt(p.cmd)} ไร่ · ${U.fmt(p.farmers)} ราย`; } };
+    const lab = (d) => new Date(d).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' });
+    make('chCmdHist', { type: 'line', data: { labels: pts.map((p) => lab(p.end)), datasets: [{ data: pts.map((p) => p.pct), borderColor: PAL().red, backgroundColor: PAL().red, borderWidth: 2, pointRadius: 5, pointHoverRadius: 7, tension: 0.25 }] }, options: o });
+  }
+
   /** พื้นที่ระบาดรายอำเภอ แยกช่วงอายุพืช (รายงานจริง) */
   function cmdAgeStack(S) {
     const rep = DA.D.rep.cmd;
@@ -108,7 +121,7 @@ KPP.Charts = (function () {
     const all = DA.varietyBreakdown({ district: S.district, tambon: S.tambon });
     const top = all.slice(0, 9);
     const rest = all.slice(9);
-    if (rest.length) top.push({ name: `อื่นๆ (${rest.length} พันธุ์)`, rai: rest.reduce((s, x) => s + x.rai, 0), cls: 'modsus' });
+    if (rest.length) top.push({ name: `อื่นๆ (${rest.length} พันธุ์)`, rai: rest.reduce((s, x) => s + x.rai, 0), cls: 'general' });
     const total = all.reduce((s, x) => s + x.rai, 0);
     const col = Object.fromEntries(C.VARIETY_CLASSES.map((v) => [v.key, v.color]));
     setHtml(legendId, legendHtml(C.VARIETY_CLASSES.map((v) => [v.color, v.label])));
@@ -172,7 +185,7 @@ KPP.Charts = (function () {
     o.scales.x.ticks.callback = (v) => v + '%';
     o.plugins.tooltip.callbacks = { label: (ctx) => ` ${ctx.dataset.label}: ${U.fmt(ctx.raw, 1)}% (${U.fmt(units[ctx.dataIndex][C.VARIETY_CLASSES[ctx.datasetIndex].key])} ไร่)` };
     o.onClick = clickUnit(S, units); o.onHover = pointer;
-    const reg = (u) => (u.resistant || 0) + (u.tolerant || 0) + (u.modsus || 0) + (u.susceptible || 0);
+    const reg = (u) => (u.resistant || 0) + (u.tolerant || 0) + (u.general || 0) + (u.susceptible || 0);
     make('chCmdVar', { type: 'bar', data: { labels: units.map((u) => u.name), datasets: C.VARIETY_CLASSES.map((v) => ({ label: v.label, data: units.map((u) => (reg(u) ? (100 * (u[v.key] || 0)) / reg(u) : 0)), backgroundColor: v.color, borderColor: css('--surface'), borderWidth: { right: 2 }, barPercentage: 0.8 })) }, options: o });
   }
 
@@ -211,5 +224,5 @@ KPP.Charts = (function () {
 
   const images = () => Object.fromEntries(Object.entries(charts).map(([k, c]) => [k, c.toBase64Image('image/png', 1)]));
 
-  return { overview, cmdAge, cmdAgeStack, cmdCompare, cmdVarietyStack, rrFactors, soilCharts, varietyClasses, destroyAll, images, charts, legendHtml, hatchSw, PAL };
+  return { overview, cmdAge, cmdAgeStack, cmdHistory, cmdCompare, cmdVarietyStack, rrFactors, soilCharts, varietyClasses, destroyAll, images, charts, legendHtml, hatchSw, PAL };
 })();

@@ -5,7 +5,8 @@ KPP.CONFIG = {
   TITLE_EN: 'Kamphaeng Phet Cassava Smart GIS & Executive Dashboard',
   CENTER: [16.33, 99.58],
   ZOOM: 9,
-  YEARS: [2565, 2566, 2567, 2568, 2569],
+  YEARS: [2565, 2566, 2567, 2569],
+  CMD_UPDATE_DAYS: 30,   // รอบอัปเดตรายงานใบด่าง: ทุก 2 สัปดาห์ – 1 เดือน
   DEFAULT_YEAR: 2569,
   PRICE_BAHT_PER_KG: 2.2,
   AID_BAHT_PER_RAI: 1980,
@@ -18,14 +19,14 @@ KPP.CONFIG = {
   DEVELOPER: 'นายดนุพน สุมังคะละ',
   DEVELOPER_TITLE: 'นักวิชาการส่งเสริมการเกษตรปฏิบัติการ',
   DEVELOPER_UNIT: 'กลุ่มส่งเสริมและพัฒนาการผลิต สำนักงานเกษตรจังหวัดกำแพงเพชร',
-  VERSION: '3.0.0',
+  VERSION: '4.0.0',
 
   // การจัดกลุ่มพันธุ์ต่อโรคใบด่าง (ปรับ/เพิ่มพันธุ์ใหม่ได้ใน นำเข้าข้อมูล › ตั้งค่า)
   // ชื่อพันธุ์จับคู่แบบไม่สนคำว่า "พันธุ์"/"มันสำปะหลัง"/ช่องว่าง และรองรับชื่อเรียกอื่น (VARIETY_ALIASES)
   VARIETY_CLASSES: [
     { key: 'resistant', label: 'ต้านทาน', color: '#1a7f37', rank: 0 },
     { key: 'tolerant', label: 'ทนทาน', color: '#8fd16a', rank: 1 },
-    { key: 'modsus', label: 'ค่อนข้างอ่อนแอ', color: '#f5a742', rank: 2 },
+    { key: 'general', label: 'ทั่วไป', color: '#8a9bb0', rank: 2 },
     { key: 'susceptible', label: 'อ่อนแอ', color: '#d7301f', rank: 3 }
   ],
   VARIETY_DEFAULTS: {
@@ -34,7 +35,7 @@ KPP.CONFIG = {
     susceptible: ['ระยอง 11', 'CMR 89', 'ไม่ระบุพันธุ์', 'พันธุ์อื่นๆ', 'แขกดำ']
   },
   VARIETY_ALIASES: { 'KU50': 'เกษตรศาสตร์ 50', 'KU 50': 'เกษตรศาสตร์ 50', 'อิธิ 3': 'อิทธิ 3', 'อิธิ 1': 'อิทธิ 1', 'อิธิ 2': 'อิทธิ 2', '89': 'CMR 89', 'CMR89': 'CMR 89', 'CMR38-125-77': 'CMR 89', '-': 'ไม่ระบุพันธุ์' },
-  VARIETY_DEFAULT_CLASS: 'modsus',
+  VARIETY_DEFAULT_CLASS: 'general',
 
   SOIL_CLASSES: [
     { key: 'S1', label: 'S1 เหมาะสมสูง', color: '#1a9850' },

@@ -1,9 +1,10 @@
 /* Standardized Data Adapter + Decision Support Engine */
 KPP.Data = (function () {
   const U = KPP.U, C = KPP.CONFIG;
-  const VK = C.VARIETY_CLASSES.map((v) => v.key);             // resistant, tolerant, modsus, susceptible
-  const VCODE = { resistant: 2, tolerant: 1, modsus: 0, susceptible: -1 };
-  const CODEV = { 2: 'resistant', 1: 'tolerant', 0: 'modsus', '-1': 'susceptible' };
+  const VK = C.VARIETY_CLASSES.map((v) => v.key);             // resistant, tolerant, general, susceptible
+  const LEGACY = { modsus: 'general' };
+  const VCODE = { resistant: 2, tolerant: 1, general: 0, susceptible: -1 };
+  const CODEV = { 2: 'resistant', 1: 'tolerant', 0: 'general', '-1': 'susceptible' };
   const SOILK = ['none', 'S1', 'S2', 'S3', 'N'];
   const D = {
     districts: [], dByCode: {}, tambons: {}, tambonsByDistrict: {},
@@ -42,7 +43,7 @@ KPP.Data = (function () {
     D.settings.varietyMap = defaultVarietyMap();
     const saved = U.store('kpp.settings.v2');
     if (saved) {
-      if (saved.varietyMap) Object.assign(D.settings.varietyMap, saved.varietyMap);
+      if (saved.varietyMap) Object.entries(saved.varietyMap).forEach(([k, v]) => { D.settings.varietyMap[k] = LEGACY[v] || v; });
       if (Array.isArray(saved.extraVarieties)) D.settings.extraVarieties = saved.extraVarieties;
       if (U.isNum(saved.price)) D.settings.price = saved.price;
     }
@@ -167,35 +168,10 @@ KPP.Data = (function () {
     return (peakY - y) * 12 + (pm - m);
   }
 
-  /* ---------- CMD: รายงานจริงรายอำเภอ -> กระจายลงแปลง/ตำบลตามพื้นที่ × ความอ่อนแอของพันธุ์ ---------- */
-  const VF = { 2: 0.1, 1: 0.45, 0: 1.2, '-1': 2.2 };
+  /* ---------- CMD: ใช้เฉพาะรายงานจริงรายอำเภอ / ข้อมูลสำรวจที่นำเข้า — ไม่กระจายลงระดับแปลง ---------- */
   function simulateDiseases() {
-    const P = D.P, cmd = D.rep.cmd, reg = D.rep.registry;
-    const wD = {}, tW = {}, tRai = {};
-    for (let i = 0; i < P.n; i++) {
-      const w = P.rai[i] * VF[P.res[i]];
-      wD[P.dcode[i]] = (wD[P.dcode[i]] || 0) + w;
-      tW[P.tcode[i]] = (tW[P.tcode[i]] || 0) + w;
-      tRai[P.tcode[i]] = (tRai[P.tcode[i]] || 0) + P.rai[i];
-    }
-    for (let i = 0; i < P.n; i++) {
-      const dr = cmd && cmd.districts[P.dcode[i]];
-      P.cmd[i] = dr && wD[P.dcode[i]] ? dr.now.total.rai * (P.rai[i] * VF[P.res[i]]) / wD[P.dcode[i]] : 0;
-    }
-    // ระดับตำบล: น้ำหนัก = พื้นที่ทะเบียนตำบล × ค่าความอ่อนแอเฉลี่ยของพันธุ์ในตำบล
-    D.cmdT = {};
-    if (!cmd) return;
-    Object.entries(cmd.districts).forEach(([dc, dr]) => {
-      const ts = (D.tambonsByDistrict[dc] || []).map((t) => {
-        const regRai = reg && reg.tambons[t.code] ? reg.tambons[t.code].rai : (tRai[t.code] || 0);
-        const vf = tRai[t.code] ? tW[t.code] / tRai[t.code] : 1;
-        return { code: t.code, regRai, w: regRai * vf };
-      });
-      const W = ts.reduce((a, t) => a + t.w, 0), RR = ts.reduce((a, t) => a + t.regRai, 0);
-      ts.forEach((t) => {
-        D.cmdT[t.code] = { cmd: W ? dr.now.total.rai * t.w / W : 0, standing: RR ? dr.standing.total.rai * t.regRai / RR : 0 };
-      });
-    });
+    const P = D.P;
+    for (let i = 0; i < P.n; i++) P.cmd[i] = 0;
   }
 
   function buildVillages() {
@@ -232,7 +208,7 @@ KPP.Data = (function () {
 
   function parcelSums(filterFn) {
     const P = D.P;
-    const s = { planted: 0, n: 0, resist: 0, resistant: 0, tolerant: 0, modsus: 0, susceptible: 0, flood: 0, floodZone: 0, floodHigh: 0, early: 0, disRai: 0,
+    const s = { planted: 0, n: 0, resist: 0, resistant: 0, tolerant: 0, general: 0, susceptible: 0, flood: 0, floodZone: 0, floodHigh: 0, early: 0, disRai: 0,
       soil_none: 0, soil_S1: 0, soil_S2: 0, soil_S3: 0, soil_N: 0, rainy: 0, rrSum: 0, rrHigh: 0, rrFlood: 0, rrSoil: 0, rrRain: 0 };
     DIS.forEach((k) => { s[k] = 0; });
     const SOILF = [0.4, 0, 0.3, 0.7, 1];
@@ -278,7 +254,7 @@ KPP.Data = (function () {
     return sum;
   }
 
-  const VSUM = ['resist', 'resistant', 'tolerant', 'modsus', 'susceptible'];
+  const VSUM = ['resist', 'resistant', 'tolerant', 'general', 'susceptible'];
   /** ค่ารายอำเภอ/ตำบล 1 หน่วย ก่อนรวม */
   function unit(year, dcode, tcode) {
     const ps = parcelScope(tcode || dcode);
@@ -290,16 +266,10 @@ KPP.Data = (function () {
         planted = rr.rai; harvested = rr.remain; srcArea = 'REGISTRY';
         out.hh = rr.hh; out.regParcels = rr.parcels; out.dmgRai = rr.dmg_rai;
       } else if (ps.planted > 0 || !tcode) { planted = ps.planted; harvested = ps.planted; srcArea = 'PARCEL'; }
-      const y = D.avgYield[dcode];
-      if (planted !== null) { production = y !== null ? harvested * y / 1000 : null; srcProd = 'PROJECTED'; }
+
     } else if (!tcode) {
       const o = D.official[year] && D.official[year][dcode];
       if (o) { planted = o.planted; harvested = o.harvested; production = o.production; srcArea = srcProd = 'OFFICIAL'; }
-      else if (year === 2568) {
-        let p = 0, h = 0, pr = 0, k = 0;
-        [2565, 2566, 2567].forEach((yy) => { const r = D.official[yy] && D.official[yy][dcode]; if (r) { p += r.planted; h += r.harvested; pr += r.production; k++; } });
-        if (k) { planted = p / k; harvested = h / k; production = pr / k; srcArea = srcProd = 'ESTIMATE'; }
-      }
     }
     const ip = importSum(year, dcode, tcode, 'planted');
     if (ip !== null) { planted = ip; srcArea = 'IMPORT'; }
@@ -307,11 +277,10 @@ KPP.Data = (function () {
     if (ih !== null) { harvested = ih; srcArea = 'IMPORT'; } else if (ip !== null) harvested = ip;
     const ipr = importSum(year, dcode, tcode, 'production');
     if (ipr !== null) { production = ipr; srcProd = 'IMPORT'; }
-    else if (ip !== null && srcProd === 'PROJECTED' && D.avgYield[dcode] !== null) production = harvested * D.avgYield[dcode] / 1000;
     Object.assign(out, { planted, harvested, production });
     out.src.area = srcArea; out.src.prod = srcProd;
 
-    const scale = ps.planted > 0 && planted !== null ? planted / ps.planted : (year === 2569 ? 1 : null);
+    const isReg = year === 2569;   // ข้อมูลรายแปลง (พันธุ์ ดิน น้ำท่วม) มีเฉพาะปีทะเบียน 2569 — ไม่ปรับสัดส่วนไปปีอื่น
 
     // โรคใบด่าง: รายงานจริงรายอำเภอ (ปี 2569) · รายตำบลเป็นค่าประมาณ · ปีอื่นไม่มีข้อมูล (เว้นแต่นำเข้า)
     const iv = importSum(year, dcode, tcode, 'cmd');
@@ -319,8 +288,7 @@ KPP.Data = (function () {
     out.cmd = null; out.standing = null; out.src.disease = null;
     if (iv !== null) { out.cmd = iv; out.src.disease = 'IMPORT'; }
     else if (year === 2569 && cr) {
-      if (tcode) { const t = D.cmdT[tcode]; if (t) { out.cmd = t.cmd; out.standing = t.standing; out.src.disease = 'REPORT_EST'; } }
-      else { const dr = cr.districts[dcode]; if (dr) { out.cmd = dr.now.total.rai; out.standing = dr.standing.total.rai; out.cmdFarmers = dr.now.total.farmers; out.standingFarmers = dr.standing.total.farmers; out.src.disease = 'REPORT'; } }
+      if (!tcode) { const dr = cr.districts[dcode]; if (dr) { out.cmd = dr.now.total.rai; out.standing = dr.standing.total.rai; out.cmdFarmers = dr.now.total.farmers; out.standingFarmers = dr.standing.total.farmers; out.src.disease = 'REPORT'; } }
     }
     // แปลงส่งเสริมพันธุ์ต้านทาน-ทนทาน (โครงการ)
     const rp = D.rep.resist_plots;
@@ -333,25 +301,30 @@ KPP.Data = (function () {
     // พันธุ์: ข้อมูลรายพันธุ์มีเฉพาะทะเบียน 2569 — ปีอื่นใช้สัดส่วนจากทะเบียน 2569 (ระบุแหล่งเป็นประมาณการ)
     const ir = importSum(year, dcode, tcode, 'resist');
     if (ir !== null) { out.resist = ir; out.src.resist = 'IMPORT'; VSUM.slice(1).forEach((k) => { out[k] = null; }); }
-    else if (year === 2569) { VSUM.forEach((k) => { out[k] = ps[k]; }); out.src.resist = 'PARCEL'; }
-    else if (scale !== null) { VSUM.forEach((k) => { out[k] = ps[k] * scale; }); out.src.resist = 'ESTIMATE'; }
+    else if (isReg) { VSUM.forEach((k) => { out[k] = ps[k]; }); out.src.resist = 'PARCEL'; }
     else { VSUM.forEach((k) => { out[k] = null; }); out.src.resist = null; }
 
-    out.flood = scale !== null ? ps.flood * scale : null;
-    out.floodHigh = scale !== null ? ps.floodHigh * scale : null;
-    out.early = scale !== null ? ps.early * scale : null;
+    out.flood = isReg ? ps.flood : null;
+    out.floodHigh = isReg ? ps.floodHigh : null;
+    out.early = isReg ? ps.early : null;
     out.disRai = year === 2569 ? (out.dmgRai ?? ps.disRai) : null;
     out.src.flood = D.flood.polygons ? 'IMPORT' : 'FLOOD';
     out.parcels = year === 2569 ? ps.n : null;
     // ชั้นดิน (ทะเบียน 2569 x แผนที่ LDD) และดัชนีรากเน่า (ไม่ขึ้นกับปี)
-    ['soil_none', 'soil_S1', 'soil_S2', 'soil_S3', 'soil_N', 'rainy', 'rrSum', 'rrHigh', 'rrFlood', 'rrSoil', 'rrRain'].forEach((k) => { out[k] = ps[k]; });
-    out.regPlanted = ps.planted;
+    ['soil_none', 'soil_S1', 'soil_S2', 'soil_S3', 'soil_N', 'rainy', 'rrSum', 'rrHigh', 'rrFlood', 'rrSoil', 'rrRain'].forEach((k) => { out[k] = isReg ? ps[k] : null; });
+    out.regPlanted = isReg ? ps.planted : null;
     return out;
   }
 
   const SUM_FIELDS = ['planted', 'harvested', 'production', 'standing', 'cmdFarmers', 'standingFarmers', 'hh', 'regParcels', 'projPlots', 'projRai', 'projCuttings', 'flood', 'floodHigh', 'early', 'disRai', 'parcels', 'regPlanted',
     'soil_none', 'soil_S1', 'soil_S2', 'soil_S3', 'soil_N', 'rainy', 'rrSum', 'rrHigh', 'rrFlood', 'rrSoil', 'rrRain'].concat(DIS, VSUM);
 
+  function refYieldFor(f) {
+    const ds = f.tambon ? [f.tambon.slice(0, 4)] : f.district ? [f.district] : D.districts.map((d) => d.code);
+    let p = 0, h = 0;
+    ds.forEach((c) => [2565, 2566, 2567].forEach((y) => { const r = D.official[y] && D.official[y][c]; if (r) { p += r.production; h += r.harvested; } }));
+    return U.yieldKgPerRai(p, h);
+  }
   function agg(year, f = {}) {
     const key = 'agg:' + year + ':' + (f.district || '') + ':' + (f.tambon || '') + ':' + D.imports.records.length;
     if (cache.has(key)) return cache.get(key);
@@ -368,6 +341,7 @@ KPP.Data = (function () {
       const ss = [...new Set(units.map((u) => u.src[k]).filter(Boolean))];
       out.src[k] = ss.length === 1 ? ss[0] : ss.includes('IMPORT') ? 'IMPORT' : ss[0] || null;
     });
+    out.refYield = refYieldFor(f);
     finalize(out);
     cache.set(key, out);
     return out;
@@ -376,16 +350,20 @@ KPP.Data = (function () {
   function finalize(o) {
     o.yield = U.yieldKgPerRai(o.production, o.harvested);
     o.cmdPct = U.safeDiv(o.cmd, o.standing || o.planted);
-    o.resistPct = U.safeDiv(o.resist, o.planted);
-    VSUM.slice(1).forEach((k) => { o[k + 'Pct'] = U.safeDiv(o[k], o.planted); });
-    o.floodPct = U.safeDiv(o.flood, o.planted);
+    const base = o.regPlanted || o.planted;
+    o.resistPct = U.safeDiv(o.resist, base);
+    VSUM.slice(1).forEach((k) => { o[k + 'Pct'] = U.safeDiv(o[k], base); });
+    o.floodPct = U.safeDiv(o.flood, o.regPlanted);
+    o.coverage = U.safeDiv(o.planted, o.standing);
+    o.regGap = U.isNum(o.standing) && U.isNum(o.planted) && o.src.area === 'REGISTRY' ? Math.max(0, o.standing - o.planted) : null;
     o.cmdSeverity = severity(o.cmdPct);
-    o.lossValue = U.isNum(o.flood) && U.isNum(o.yield) ? o.flood * o.yield * D.settings.price : null;
+    const refYield = U.isNum(o.yield) ? o.yield : o.refYield;
+    o.lossValue = U.isNum(o.flood) && U.isNum(refYield) ? o.flood * refYield * D.settings.price : null;
     o.aidBudget = U.isNum(o.flood) ? o.flood * C.AID_BAHT_PER_RAI : null;
     o.diseaseTotal = DIS.reduce((a, k) => a + (o[k] || 0), 0);
     // ดัชนีความเร่งด่วนจัดการโรคใบด่าง (0–100)
     const reg = o.regPlanted || 0;
-    const susShare = reg ? ((o.susceptible || 0) + 0.5 * (o.modsus || 0)) / Math.max(o.planted || reg, 1) : null;
+    const susShare = reg ? ((o.susceptible || 0) + 0.5 * (o.general || 0)) / reg : null;
     o.cmdIndex = U.isNum(o.cmdPct) && U.isNum(o.resistPct)
       ? Math.round(50 * Math.min(o.cmdPct / 0.3, 1) + 30 * Math.min(susShare || 0, 1) + 20 * (1 - Math.min(o.resistPct / 0.3, 1))) : null;
     o.cmdLevel = level4(o.cmdIndex, [20, 40, 60]);
@@ -489,8 +467,9 @@ KPP.Data = (function () {
       const acts = [];
       if (minor) acts.push('พื้นที่ปลูกน้อย — เฝ้าระวังตามปกติ');
       else {
+        if (!U.isNum(u.cmd) && u.code.length === 6) acts.push('ยังไม่มีผลสำรวจใบด่างรายตำบล — ให้อำเภอส่งแบบสำรวจรายตำบลผ่านระบบ');
         if ((u.cmdPct || 0) >= 0.05) acts.push(`ระบาด ${U.pct(u.cmdPct)}: ตั้งจุดตรวจ/ถอนทำลายต้นเป็นโรค ห้ามเคลื่อนย้ายท่อนพันธุ์ออกนอกพื้นที่`);
-        if ((u.susceptiblePct || 0) >= 0.2) acts.push(`พันธุ์อ่อนแอ ${U.pct(u.susceptiblePct)} (${U.fmt(u.susceptible)} ไร่): เร่งทดแทนด้วยพันธุ์ต้านทานอิทธิ 1–3 / ทนทานห้วยบง 60, เกษตรศาสตร์ 50`);
+        if ((u.susceptiblePct || 0) >= 0.2) acts.push(`พันธุ์อ่อนแอ ${U.pct(u.susceptiblePct)} (${U.fmt(u.susceptible)} ไร่ในผังแปลง): เร่งทดแทนด้วยพันธุ์ต้านทานอิทธิ 1–3 / ทนทานห้วยบง 60, เกษตรศาสตร์ 50`);
         if ((u.resistPct || 0) < 0.1) acts.push(`พันธุ์ต้านทาน+ทนทานเพียง ${U.pct(u.resistPct)}: ตั้งแปลงขยายท่อนพันธุ์สะอาดผ่าน ${np ? np.row.name : 'ศจช.'}${np ? ' (' + U.fmt(np.km, 1) + ' กม.)' : ''}`);
         if (!acts.length) acts.push('สถานการณ์ควบคุมได้ — รักษาสัดส่วนพันธุ์ต้านทาน และสำรวจแมลงหวี่ขาวต่อเนื่อง');
       }

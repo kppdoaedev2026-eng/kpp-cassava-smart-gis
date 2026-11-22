@@ -59,36 +59,67 @@ for f in files:
             reg['tambons'][c] = rec
 print('[1] ทะเบียน: ไฟล์ %d · อำเภอ %d · ตำบล %d · รวม %s ไร่' % (len(files), len(reg['districts']), len(reg['tambons']), reg['province'] and reg['province']['rai']))
 
-# ---------- 2) CMD weekly report ----------
-cmd = None
-f = find('รายงานใบด่าง*.xlsx')
-if f:
-    ws = openpyxl.load_workbook(f[-1], data_only=True).active
+# ---------- 2) CMD reports (ทุกฉบับ -> ประวัติรายรอบ 2 สัปดาห์/รายเดือน) ----------
+TH_MONTHS = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม']
+AGES = ['lt3', 'm3_5', 'm6_8', 'gt8']
+
+
+def thai_dates(text):
+    out = []
+    for d, mname, y in re.findall(r'(\d{1,2})\s*(' + '|'.join(TH_MONTHS) + r')\s*(?:พ\.ศ\.)?\s*(25\d\d)', text):
+        out.append('%04d-%02d-%02d' % (int(y) - 543, TH_MONTHS.index(mname) + 1, int(d)))
+    return out
+
+
+def parse_cmd(path):
+    ws = openpyxl.load_workbook(path, data_only=True).active
     rows = list(ws.iter_rows(values_only=True))
     period = next((str(r[0]) for r in rows if r[0] and 'ข้อมูลระหว่าง' in str(r[0])), '')
-    AGES = ['lt3', 'm3_5', 'm6_8', 'gt8']
+    dates = thai_dates(period)
 
     def block(r, start):
         out = {a: {'rai': round(num(r[start + 2 * i]), 2), 'farmers': int(num(r[start + 2 * i + 1]))} for i, a in enumerate(AGES)}
         out['total'] = {'rai': round(num(r[start + 8]), 2), 'farmers': int(num(r[start + 9]))}
         return out
-    cmd = {'source': 'รายงานสถานการณ์การระบาดของศัตรูพืช: โรคใบด่างมันสำปะหลัง จ.กำแพงเพชร', 'period': period.replace('ข้อมูลระหว่าง', '').strip(),
+    rep = {'source': 'รายงานสถานการณ์การระบาดของศัตรูพืช: โรคใบด่างมันสำปะหลัง จ.กำแพงเพชร', 'file': os.path.basename(path),
+           'period': period.replace('ข้อมูลระหว่าง', '').strip(), 'start': dates[0] if dates else None, 'end': dates[-1] if dates else None,
            'province': None, 'districts': {}}
     for r in rows:
         name = str(r[0] or '').strip()
-        if not name or not isinstance(r[13], (int, float)):
+        if not name or len(r) < 37 or not isinstance(r[13], (int, float)):
             continue
         rec = {'standing': block(r, 5), 'prev': block(r, 15), 'now': block(r, 25), 'trend': r[35], 'checked': r[36]}
         if name.startswith('จ.'):
-            cmd['province'] = rec
+            rep['province'] = rec
         else:
             dc = dcode_of(name)
             if dc:
-                cmd['districts'][dc] = rec
+                rep['districts'][dc] = rec
             else:
-                print('   ไม่พบอำเภอ', name)
-    p = cmd['province']
-    print('[2] ใบด่าง %s: ยืนต้น %.0f ไร่ ระบาด %.0f ไร่ (%d ราย) อำเภอ %d' % (cmd['period'], p['standing']['total']['rai'], p['now']['total']['rai'], p['now']['total']['farmers'], len(cmd['districts'])))
+                print('   ไม่พบอำเภอ', name, 'ใน', rep['file'])
+    return rep
+
+
+paths = []
+for d in SEARCH:
+    paths += glob.glob(os.path.join(d, 'รายงานใบด่าง*.xlsx')) + glob.glob(os.path.join(d, 'รายงานใบด่าง', '*.xlsx'))
+by_end = {}
+for pth in sorted(set(os.path.normcase(os.path.abspath(x)) for x in paths)):
+    try:
+        rep = parse_cmd(pth)
+    except Exception as e:
+        print('   อ่านไม่ได้', pth, e); continue
+    if not rep['province'] or not rep['end']:
+        print('   ข้าม (ไม่พบช่วงวันที่/ยอดจังหวัด)', os.path.basename(pth)); continue
+    by_end[rep['end']] = rep
+history = [by_end[k] for k in sorted(by_end)]
+cmd = history[-1] if history else None
+cmd_history = [{'period': h['period'], 'start': h['start'], 'end': h['end'],
+                'standing': h['province']['standing']['total']['rai'], 'cmd': h['province']['now']['total']['rai'], 'farmers': h['province']['now']['total']['farmers'],
+                'districts': {c: {'standing': v['standing']['total']['rai'], 'cmd': v['now']['total']['rai'], 'farmers': v['now']['total']['farmers']} for c, v in h['districts'].items()}}
+               for h in history]
+for h in cmd_history:
+    print('[2] ใบด่าง %s → %s: ระบาด %.0f / ยืนต้น %.0f ไร่ (%d ราย)' % (h['start'], h['end'], h['cmd'], h['standing'], h['farmers']))
 
 # ---------- 3) Resistant / tolerant variety project plots ----------
 res = None
@@ -127,6 +158,6 @@ if f:
 
 with open(OUT, 'w', encoding='utf-8') as fo:
     fo.write('window.KPP_REPORTS=')
-    json.dump({'registry': reg, 'cmd': cmd, 'resist_plots': res}, fo, ensure_ascii=False, separators=(',', ':'))
+    json.dump({'registry': reg, 'cmd': cmd, 'cmd_history': cmd_history, 'resist_plots': res}, fo, ensure_ascii=False, separators=(',', ':'))
     fo.write(';\n')
 print('->', OUT, '%.0f KB' % (os.path.getsize(OUT) / 1024))

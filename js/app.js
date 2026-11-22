@@ -28,7 +28,7 @@ KPP.App = (function () {
 
   /* ---------- filters ---------- */
   function buildFilters() {
-    $('fYear').innerHTML = C.YEARS.slice().reverse().map((y) => `<option value="${y}">${y}${y === 2569 ? ' (ทะเบียนแปลง)' : y === 2568 ? ' (ประมาณการ)' : ''}</option>`).join('');
+    $('fYear').innerHTML = C.YEARS.slice().reverse().map((y) => `<option value="${y}">${y}${y === 2569 ? ' (ทะเบียนเกษตรกร)' : ' (สถิติทางการ)'}</option>`).join('');
     $('fDistrict').innerHTML = '<option value="">ทุกอำเภอ (11)</option>' + DA.D.districts.map((d) => `<option value="${d.code}">${d.name}</option>`).join('');
   }
   function syncFilters() {
@@ -96,10 +96,12 @@ KPP.App = (function () {
       else delta = '<span class="delta na">YoY: ไม่มีข้อมูลปีก่อน</span>';
       const reg2569 = state.year === 2569 && a.hh;
       h = card('var(--brand)', reg2569 ? 'พื้นที่ปลูกขึ้นทะเบียน' : 'พื้นที่เพาะปลูก', U.fmt(a.planted), 'ไร่', reg2569 ? `${U.fmt(a.hh)} ครัวเรือน · ${U.fmt(a.regParcels)} แปลง${a.dmgRai ? ' · เสียหาย ' + U.fmt(a.dmgRai) + ' ไร่' : ''}` : delta, a.src.area)
-        + card('var(--gold)', 'ผลผลิตประมาณการ', U.fmt(a.production), 'ตัน', `ผลผลิตเฉลี่ย <b>${U.fmt(a.yield)}</b> กก./ไร่`, a.src.prod)
-        + card('var(--critical)', 'พื้นที่ระบาดโรคใบด่าง', U.fmt(a.cmd), 'ไร่', U.isNum(a.cmd) ? `${U.pct(a.cmdPct)} ของพื้นที่ยืนต้น ${status(a.cmdSeverity)}${a.cmdFarmers ? ' · ' + U.fmt(a.cmdFarmers) + ' ราย' : ''}` : 'มีรายงานเฉพาะปี 2569', a.src.disease)
-        + card('#1a7f37', 'พันธุ์ต้านทาน + ทนทาน', U.fmt(a.resist), 'ไร่', `ครอบคลุม <b>${U.pct(a.resistPct)}</b> · ต้านทาน ${U.fmt(a.resistant)} · ทนทาน ${U.fmt(a.tolerant)}${bar(a.resistPct / 0.3, '#1a7f37')}`, a.src.resist)
-        + card('var(--flood)', 'ทับซ้อนน้ำท่วมซ้ำซาก', U.fmt(a.flood), 'ไร่', `${U.pct(a.floodPct)} · มูลค่าผลผลิตเสี่ยง ≈ <b>${U.fmtCompact(a.lossValue)}</b> บาท · งบช่วยเหลือ ≈ ${U.fmtCompact(a.aidBudget)} บาท`, a.src.flood);
+        + (U.isNum(a.production) ? card('var(--gold)', 'ผลผลิต', U.fmt(a.production), 'ตัน', `ผลผลิตเฉลี่ย <b>${U.fmt(a.yield)}</b> กก./ไร่`, a.src.prod)
+          : (() => { const o = DA.agg(lastOfficialYear(), f()); return card('var(--gold)', `ผลผลิตล่าสุด (ปี ${lastOfficialYear()})`, U.fmt(o.production), 'ตัน', `ผลผลิตเฉลี่ย <b>${U.fmt(o.yield)}</b> กก./ไร่ · ปี 2569 รอสถิติทางการ`, 'OFFICIAL'); })())
+        + card('var(--critical)', 'พื้นที่ระบาดโรคใบด่าง', U.fmt(a.cmd), 'ไร่', U.isNum(a.cmd) ? `${U.pct(a.cmdPct)} ของพื้นที่ยืนต้น ${status(a.cmdSeverity)}${a.cmdFarmers ? ' · ' + U.fmt(a.cmdFarmers) + ' ราย' : ''}${cmdDelta()}` : (state.year === 2569 ? 'ยังไม่มีผลสำรวจรายตำบล' : 'มีรายงานเฉพาะปี 2569'), a.src.disease)
+        + (reg2569 && U.isNum(a.coverage) ? card('#2a78d6', 'ความครอบคลุมทะเบียน', U.pct(a.coverage, 0), '', `ทะเบียน ${U.fmt(a.planted)} / ยืนต้น ${U.fmt(a.standing)} ไร่ · ยังไม่ขึ้นทะเบียน ${U.fmt(a.regGap)} ไร่${bar(Math.min(1, a.coverage), '#2a78d6')}`, 'REGISTRY') : '')
+        + card('#1a7f37', 'พันธุ์ต้านทาน + ทนทาน', U.fmt(a.resist), 'ไร่', U.isNum(a.resist) ? `<b>${U.pct(a.resistPct)}</b> ของผังแปลง · ต้านทาน ${U.fmt(a.resistant)} · ทนทาน ${U.fmt(a.tolerant)}${bar(a.resistPct / 0.3, '#1a7f37')}` : 'มีข้อมูลรายพันธุ์เฉพาะปี 2569', a.src.resist)
+        + (U.isNum(a.flood) ? card('var(--flood)', 'ทับซ้อนน้ำท่วมซ้ำซาก', U.fmt(a.flood), 'ไร่', `${U.pct(a.floodPct)} ของผังแปลง · มูลค่าผลผลิตเสี่ยง ≈ <b>${U.fmtCompact(a.lossValue)}</b> บาท`, a.src.flood) : '');
     } else if (state.module === 'cmd') {
       const rp = DA.D.rep.resist_plots;
       h = card('#2a78d6', 'พื้นที่ยืนต้น (รายงานโรค)', U.fmt(a.standing ?? a.planted), 'ไร่', `${a.standingFarmers ? U.fmt(a.standingFarmers) + ' ราย · ' : ''}ทะเบียน ${U.fmt(a.planted)} ไร่`, a.src.disease || a.src.area)
@@ -107,7 +109,7 @@ KPP.App = (function () {
         + card('#1a7f37', 'พันธุ์ต้านทาน', U.fmt(a.resistant), 'ไร่', `${U.pct(a.resistantPct, 2)} · อิทธิ 1–3 ${bar(a.resistantPct / 0.3, '#1a7f37')}`, a.src.resist)
         + card('#8fd16a', 'พันธุ์ทนทาน', U.fmt(a.tolerant), 'ไร่', `${U.pct(a.tolerantPct)} · ห้วยบง 60, เกษตรศาสตร์ 50 ${bar(a.tolerantPct / 0.3, '#5aa832')}`, a.src.resist)
         + (rp ? card('#0f766e', 'แปลงส่งเสริมพันธุ์ต้านทาน', U.fmt(a.projPlots), 'แปลง', `${U.fmt(a.projRai, 1)} ไร่ · ท่อนพันธุ์ ${U.fmtCompact(a.projCuttings)} ท่อน`, 'PROJECT') : '')
-        + card('#b2182b', 'ดัชนีเร่งด่วนจัดการโรค', U.isNum(a.cmdIndex) ? a.cmdIndex : '–', '/100', `${status(a.cmdLevel)} · พันธุ์อ่อนแอ ${U.pct(a.susceptiblePct)} · ค่อนข้างอ่อนแอ ${U.pct(a.modsusPct)}`, 'MODEL');
+        + card('#b2182b', 'ดัชนีเร่งด่วนจัดการโรค', U.isNum(a.cmdIndex) ? a.cmdIndex : '–', '/100', `${status(a.cmdLevel)} · พันธุ์อ่อนแอ ${U.pct(a.susceptiblePct)} · ทั่วไป ${U.pct(a.generalPct)}`, 'MODEL');
     } else if (state.module === 'rootrot') {
       const list = DA.rootRotMatrix(state.district);
       const crit = list.filter((r) => r.rrLevel.key === 'critical' || r.rrLevel.key === 'serious');
@@ -132,6 +134,16 @@ KPP.App = (function () {
     $('kpis').innerHTML = h;
   }
 
+  function lastOfficialYear() { return Math.max(...Object.keys(DA.D.official).map(Number)); }
+  function cmdHist() { return DA.D.rep.cmd_history || []; }
+  function cmdDelta() {
+    const h = cmdHist(); if (h.length < 2) return '';
+    const pick = (x) => (state.district ? (x.districts[state.district] || {}).cmd : x.cmd);
+    const d = pick(h[h.length - 1]) - pick(h[h.length - 2]);
+    if (!U.isNum(d)) return '';
+    return ` · <span class="delta ${d > 0 ? 'down' : 'up'}">${d > 0 ? '▲ +' : d < 0 ? '▼ ' : ''}${U.fmt(d)} ไร่</span> จากรอบก่อน`;
+  }
+
   /* ---------- crumb ---------- */
   function renderCrumb() {
     const parts = ['<a data-crumb="prov">จ.กำแพงเพชร</a>'];
@@ -150,20 +162,23 @@ KPP.App = (function () {
         { id: 'ov', label: 'ภาพรวม', html: () => card2('เปรียบเทียบรายพื้นที่', `<span class="sub">${state.district ? 'รายตำบล' : 'รายอำเภอ'} · ปี ${state.year} · ไร่</span>`, '<div class="chart-legend" id="cmpLegend"></div><div class="chart-box tall"><canvas id="chCompare"></canvas></div>')
             + `<div class="grid2">${card2('พื้นที่ระบาดใบด่างตามอายุพืช', srcBadge('REPORT'), '<div class="chart-legend" id="ageLegend"></div><div class="chart-box"><canvas id="chDonut"></canvas></div><p class="note" id="ageSub"></p>')}
               ${card2('พันธุ์ที่ปลูก (ทะเบียน 2569)', srcBadge('PARCEL'), '<div class="chart-legend" id="varLegend"></div><div class="chart-box"><canvas id="chVariety"></canvas></div>')}</div>`
-            + card2('แนวโน้ม 5 ปี (2565–2569)', '<span class="sub" id="trendSub"></span>', `<div class="grid2 tight"><div><div class="mini-h">ผลผลิตเฉลี่ย (กก./ไร่)</div><div class="chart-box short"><canvas id="chTrendYield"></canvas></div></div><div><div class="mini-h">พื้นที่ปลูก (ไร่) · เส้นประ = ประมาณการ/ทะเบียน</div><div class="chart-box short"><canvas id="chTrendCmd"></canvas></div></div></div>`),
+            + card2('แนวโน้มพื้นที่และผลผลิต (สถิติทางการ + ทะเบียน 2569)', '<span class="sub" id="trendSub"></span>', `<div class="grid2 tight"><div><div class="mini-h">ผลผลิตเฉลี่ย (กก./ไร่)</div><div class="chart-box short"><canvas id="chTrendYield"></canvas></div></div><div><div class="mini-h">พื้นที่ปลูก (ไร่) · เส้นประ = ทะเบียนเกษตรกร 2569</div><div class="chart-box short"><canvas id="chTrendCmd"></canvas></div></div></div>`),
           after: () => CH.overview(state) },
+        { id: 'plan', label: 'แผนปฏิบัติการ', html: planHtml },
         { id: 'risk', label: 'ตารางความเสี่ยง', html: riskTableHtml },
-        { id: 'insight', label: 'ข้อเสนอแนะเชิงนโยบาย', html: insightsHtml }
+        { id: 'insight', label: 'ข้อเสนอแนะ', html: insightsHtml },
+        { id: 'status', label: 'สถานะข้อมูล', html: statusHtml }
       ]
     },
     cmd: {
       tabs: [
         { id: 'cmp', label: 'กราฟเปรียบเทียบ', html: () => card2('พื้นที่ปลูก · พื้นที่ระบาด · พันธุ์ต้านทาน/ทนทาน', `<div class="seg" id="cmdSeg"><button data-mode="rai" class="${state.cmdMode === 'rai' ? 'on' : ''}">ไร่</button><button data-mode="pct" class="${state.cmdMode === 'pct' ? 'on' : ''}">% ของพื้นที่ปลูก</button></div>`,
-            `<div class="chart-legend" id="cmdLegend"></div><div class="chart-box tall"><canvas id="chCmdCompare"></canvas></div><p class="note">${state.district ? 'รายตำบล (พื้นที่ระบาด/ยืนต้นเป็นค่าประมาณจากรายงานรายอำเภอ)' : 'รายอำเภอ'} · ปี ${state.year} · % ระบาดคิดจากพื้นที่ยืนต้น · % พันธุ์คิดจากพื้นที่ทะเบียน · คลิกแท่งเพื่อเจาะลึก</p>`)
+            `<div class="chart-legend" id="cmdLegend"></div><div class="chart-box tall"><canvas id="chCmdCompare"></canvas></div><p class="note">${state.district ? 'รายตำบล — พื้นที่ระบาดมีในรายงานระดับอำเภอเท่านั้น (ตำบลแสดงเฉพาะพันธุ์) · ' : 'รายอำเภอ · '}% ระบาดคิดจากพื้นที่ยืนต้น · % พันธุ์คิดจากผังแปลงดิจิทัล · คลิกแท่งเพื่อเจาะลึก</p>`)
+            + card2('แนวโน้มการระบาดตามรอบรายงาน', srcBadge('REPORT'), `<div class="chart-box short"><canvas id="chCmdHist"></canvas></div><p class="note" id="histNote"></p>`)
             + card2('พื้นที่ระบาดรายอำเภอ แยกตามอายุพืช (ไร่)', srcBadge('REPORT'), '<div class="chart-legend" id="ageStackLegend"></div><div class="chart-box tall"><canvas id="chAgeStack"></canvas></div>')
             + card2('สัดส่วนกลุ่มพันธุ์ต่อโรคใบด่าง (% ของพื้นที่ขึ้นทะเบียน)', srcBadge('PARCEL'), '<div class="chart-legend" id="cmdVarLegend"></div><div class="chart-box tall"><canvas id="chCmdVar"></canvas></div>')
             + card2('พันธุ์ที่ปลูกและกลุ่มความต้านทาน', '', '<div class="chart-legend" id="cmdVarLegend2"></div><div class="chart-box"><canvas id="chCmdVarList"></canvas></div>'),
-          after: () => { CH.cmdCompare(state, state.cmdMode); CH.cmdAgeStack(state); CH.cmdVarietyStack(state); CH.varietyClasses(state, 'chCmdVarList', 'cmdVarLegend2'); } },
+          after: () => { CH.cmdCompare(state, state.cmdMode); CH.cmdHistory(state); CH.cmdAgeStack(state); CH.cmdVarietyStack(state); CH.varietyClasses(state, 'chCmdVarList', 'cmdVarLegend2'); } },
         { id: 'tbl', label: 'ตารางการจัดการ', html: cmdTableHtml },
         { id: 'proj', label: 'แปลงส่งเสริมพันธุ์', html: projTableHtml },
         { id: 'rec', label: 'แนวทางจัดการ', html: cmdRecHtml }
@@ -237,28 +252,87 @@ KPP.App = (function () {
   function gapText(a, target = 0.3) {
     if (!U.isNum(a.resistPct)) return '<p>ไม่มีข้อมูลรายพันธุ์</p>';
     const gap = a.resistPct < target ? (target - a.resistPct) * a.planted : 0;
-    return `<p>ปัจจุบันต้านทาน ${U.fmt(a.resistant)} ไร่ + ทนทาน ${U.fmt(a.tolerant)} ไร่ = <b>${U.pct(a.resistPct)}</b> · อ่อนแอ ${U.fmt(a.susceptible)} ไร่ · ค่อนข้างอ่อนแอ ${U.fmt(a.modsus)} ไร่</p>
+    return `<p>ปัจจุบันต้านทาน ${U.fmt(a.resistant)} ไร่ + ทนทาน ${U.fmt(a.tolerant)} ไร่ = <b>${U.pct(a.resistPct)}</b> · อ่อนแอ ${U.fmt(a.susceptible)} ไร่ · ทั่วไป ${U.fmt(a.general)} ไร่</p>
       ${gap ? `<p>เป้าหมาย ${U.pct(target, 0)}: ต้องเพิ่ม <b>${U.fmt(gap)}</b> ไร่ ≈ ท่อนพันธุ์สะอาด <b>${U.fmtCompact(gap * 1600)}</b> ท่อน (1,600 ท่อน/ไร่) · แปลงขยายพันธุ์ ≈ ${U.fmt(gap / 10)} ไร่ (อัตราขยาย 1:10)</p>` : '<p>บรรลุเป้าหมายแล้ว</p>'}`;
   }
   function provenanceHtml() {
     return `<div class="ins"><h4>ℹ️ ความน่าเชื่อถือของข้อมูล</h4><ul>
-      <li>${srcBadge('OFFICIAL')} พื้นที่/ผลผลิต 2565–2567 · ${srcBadge('ESTIMATE')} 2568 (เฉลี่ย 3 ปี)</li>
+      <li>${srcBadge('OFFICIAL')} พื้นที่/ผลผลิต 2565–2567 (ปี 2568 ยังไม่มีสถิติในระบบ จึงไม่แสดงค่า)</li>
       <li>${srcBadge('REGISTRY')} พื้นที่ปลูก 2569 จากทะเบียนเกษตรกรกลาง · ${srcBadge('PARCEL')} สัดส่วนพันธุ์/ชั้นดินจากผังแปลง ${U.fmt(DA.D.P.parcels)} แปลง</li>
-      <li>${srcBadge('REPORT')} พื้นที่ระบาดใบด่างรายอำเภอ ${U.esc(DA.D.rep.cmd ? DA.D.rep.cmd.period : '')} · ${srcBadge('REPORT_EST')} รายตำบล</li>
+      <li>${srcBadge('REPORT')} พื้นที่ระบาดใบด่างรายอำเภอ ${U.esc(DA.D.rep.cmd ? DA.D.rep.cmd.period : '')} — ระบบไม่ประมาณค่ารายตำบล</li>
       <li>${srcBadge('LDD')} ชั้นความเหมาะสมดิน: ตารางทางการรายอำเภอ + แผนที่ดิจิไทซ์ (คลาดเคลื่อนรวม 3–10%)</li>
       <li>${srcBadge('FLOOD')} ตำบลอุทกภัย 2563–2569 · ${srcBadge('PROJECT')} แปลงส่งเสริมพันธุ์ต้านทาน-ทนทาน</li></ul></div>`;
+  }
+
+  /* ----- Action plan: แผนปฏิบัติการรายอำเภอ (รวมข้อเสนอทุกด้าน) ----- */
+  function planHtml() {
+    const y = 2569;
+    const ds = DA.byDistrict(y).filter((u) => (u.planted || 0) >= 300);
+    const cm = Object.fromEntries(DA.cmdMatrix(y).map((r) => [r.code, r]));
+    const rr = Object.fromEntries(DA.D.districts.map((d) => [d.code, DA.agg(y, { district: d.code })]));
+    const t7 = Object.fromEntries((window.KPP_LDD ? window.KPP_LDD.table7.rows : []).map((r) => [r.district_code, r]));
+    const target = 0.2;
+    const rows = ds.map((u) => {
+      const acts = [];
+      let prio = 0;
+      if ((u.cmdPct || 0) >= 0.15) { acts.push(['🦠', 'ควบคุมโรคใบด่าง', `ระบาด ${U.pct(u.cmdPct)} (${U.fmt(u.cmd)} ไร่ ${U.fmt(u.cmdFarmers)} ราย) — ตั้งจุดตรวจ งดเคลื่อนย้ายท่อนพันธุ์ ถอนทำลายต้นเป็นโรค`]); prio += 40 * Math.min(u.cmdPct / 0.3, 1); }
+      const gapRai = U.isNum(u.resistPct) && u.resistPct < target ? (target - u.resistPct) * u.planted : 0;
+      if (gapRai > 0) { acts.push(['🛡️', 'ทดแทนพันธุ์', `เพิ่มพันธุ์ต้านทาน/ทนทาน ${U.fmt(gapRai)} ไร่ (ท่อนพันธุ์ ≈ ${U.fmtCompact(gapRai * 1600)} ท่อน · แปลงขยาย ≈ ${U.fmt(gapRai / 10)} ไร่) จากปัจจุบัน ${U.pct(u.resistPct)}`]); prio += 20 * (1 - Math.min(u.resistPct / target, 1)); }
+      if (U.isNum(u.coverage) && u.coverage < 0.8) { acts.push(['📋', 'เร่งขึ้นทะเบียน', `ทะเบียนครอบคลุม ${U.pct(u.coverage, 0)} — ยังไม่ขึ้นทะเบียน ${U.fmt(u.regGap)} ไร่`]); prio += 15 * (1 - u.coverage); }
+      const r = rr[u.code];
+      if (r && (r.rrIndex || 0) >= 50) { acts.push(['🍂', 'ป้องกันรากเน่าโคนเน่า', `ดัชนี ${r.rrIndex}/100 — ยกร่อง ระบายน้ำ ชุบท่อนพันธุ์ด้วยไตรโคเดอร์มา`]); prio += 15 * Math.min(r.rrIndex / 70, 1); }
+      const t = t7[u.code];
+      if (t && t.planted.S3 + t.planted.N > 10000) { acts.push(['🟫', 'ปรับการใช้ที่ดิน', `ปลูกบนดิน S3/N ${U.fmt(t.planted.S3 + t.planted.N)} ไร่ (LDD) — ปรับปรุงดินหรือปรับเปลี่ยนพืช`]); prio += 10; }
+      if ((u.flood || 0) >= 1000) acts.push(['🌊', 'หลบน้ำหลาก', `ทับซ้อนน้ำท่วมซ้ำซาก ${U.fmt(u.flood)} ไร่ — เลื่อนรอบปลูก/เก็บเกี่ยวก่อน ก.ย.`]);
+      return { u, acts, prio: Math.round(prio), cmdLevel: (cm[u.code] || {}).cmdLevel };
+    }).sort((a, b) => b.prio - a.prio);
+    return `<div class="card"><div class="card-h"><h3>แผนปฏิบัติการรายอำเภอ ปี 2569</h3>${srcBadge('MODEL')}</div>
+      <p class="hint">เรียงตามคะแนนความเร่งด่วน (ใบด่าง 40 · พันธุ์ 20 · ทะเบียน 15 · รากเน่า 15 · ดิน 10) คำนวณจากข้อมูลจริงในระบบ · เป้าหมายพันธุ์ต้านทาน+ทนทาน 20%</p>
+      <div class="plan">${rows.map((x, i) => `<article class="plan-row" data-code="${x.u.code}"><header><span class="rank">${i + 1}</span><b>อ.${U.esc(x.u.name)}</b><span class="score">${x.prio}</span>${x.cmdLevel ? status(x.cmdLevel) : ''}</header>
+        <ul>${x.acts.map(([ic, t, d]) => `<li><span class="ic">${ic}</span><b>${t}</b> ${U.esc(d)}</li>`).join('') || '<li>เฝ้าระวังตามปกติ</li>'}</ul></article>`).join('')}</div></div>`;
+  }
+
+  /* ----- Data status: วันที่ข้อมูลและกำหนดอัปเดต ----- */
+  function statusHtml() {
+    const rep = DA.D.rep.cmd, h = cmdHist();
+    const today = new Date();
+    const cyc = C.CMD_UPDATE_DAYS || 30;
+    const end = rep && rep.end ? new Date(rep.end) : null;
+    const age = end ? Math.floor((today - end) / 86400000) : null;
+    const due = end ? new Date(end.getTime() + cyc * 86400000) : null;
+    const st = age === null ? { k: 'na', t: 'ไม่มีข้อมูล' } : age <= 14 ? { k: 'good', t: 'เป็นปัจจุบัน' } : age <= cyc ? { k: 'warning', t: 'ใกล้ครบรอบอัปเดต' } : { k: 'critical', t: 'เกินรอบอัปเดต' };
+    const th = (d) => (d ? d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) : '–');
+    const rows = [
+      ['รายงานระบาดโรคใบด่าง', 'REPORT', rep ? rep.period.replace(/วัน\S+ที่ /g, '') : '–', `ทุก 2 สัปดาห์ – 1 เดือน · ครั้งถัดไปภายใน ${th(due)}`, st],
+      ['ทะเบียนเกษตรกรกลาง', 'REGISTRY', 'พ.ย. 2569', 'รายเดือน หรือเมื่อปิดรอบการขึ้นทะเบียน', { k: 'good', t: 'ใช้งานได้' }],
+      ['ผังแปลงเกษตรกรรมดิจิทัล', 'PARCEL', DA.D.P.asof || '–', 'ทุกรอบการผลิต', { k: 'good', t: 'ใช้งานได้' }],
+      ['แปลงส่งเสริมพันธุ์ต้านทาน-ทนทาน', 'PROJECT', '22 พ.ย. 2569', 'เมื่อมีแปลงใหม่/ผลประเมิน', { k: 'good', t: 'ใช้งานได้' }],
+      ['สถิติการผลิต', 'OFFICIAL', 'ปี 2565–2567', 'รายปี (ขาดปี 2568)', { k: 'warning', t: 'ขาดปี 2568' }],
+      ['ความเหมาะสมดิน', 'LDD', 'Agri-Map 2564', 'เมื่อ LDD ปรับปรุง', { k: 'good', t: 'ใช้งานได้' }],
+      ['รายงานอุทกภัย', 'FLOOD', '2563–2569', 'รายปี', { k: 'good', t: 'ใช้งานได้' }]
+    ];
+    return `<div class="card"><div class="card-h"><h3>สถานะข้อมูลและรอบการอัปเดต</h3></div>
+      <div class="table-wrap"><table class="risk"><thead><tr><th>ชุดข้อมูล</th><th>แหล่ง</th><th>ข้อมูล ณ</th><th>รอบอัปเดต</th><th>สถานะ</th></tr></thead><tbody>
+      ${rows.map(([n, src, d, c, s2]) => `<tr><td class="l">${n}</td><td class="l">${srcBadge(src)}</td><td class="l">${U.esc(d)}</td><td class="l" style="white-space:normal">${c}</td><td><span class="status ${s2.k}">${s2.t}</span></td></tr>`).join('')}
+      </tbody></table></div>
+      <p class="hint">ประวัติรายงานใบด่างในระบบ: ${h.length} รอบ${h.length ? ` (${h.map((x) => th(new Date(x.end))).join(' · ')})` : ''}</p></div>
+      <div class="ins"><h4>วิธีอัปเดตรายงานใบด่าง (ทุก 2 สัปดาห์ หรือเดือนละครั้ง)</h4><ol>
+        <li>ดาวน์โหลดรายงานสถานการณ์การระบาดของศัตรูพืช (โรคใบด่างมันสำปะหลัง) เป็นไฟล์ Excel</li>
+        <li>วางไฟล์ไว้ในโฟลเดอร์ <b>รายงานใบด่าง</b> ของระบบ (เก็บฉบับเก่าไว้เพื่อสร้างกราฟแนวโน้ม)</li>
+        <li>ดับเบิลคลิก <b>อัปเดตรายงานใบด่าง.bat</b> แล้วตอบ Y เพื่อเผยแพร่ เว็บไซต์จะอัปเดตภายใน 1–2 นาที</li></ol>
+        <p class="hint">ไฟล์ทะเบียนเกษตรกรและรายชื่อเกษตรกรจะไม่ถูกเผยแพร่ ระบบเผยแพร่เฉพาะสรุปรายอำเภอ/ตำบล</p></div>`;
   }
 
   /* ----- CMD ----- */
   function cmdTableHtml() {
     const rows = DA.cmdMatrix(state.year, state.district);
     const uw = unitWord();
-    return card2(`ตารางการจัดการโรคใบด่างราย${uw} ปี ${state.year}`, srcBadge('MODEL'), `<p class="hint">ดัชนี (0–100) = 50 × สัดส่วนระบาดต่อพื้นที่ยืนต้น (เต็มที่ 30%) + 30 × สัดส่วนพันธุ์อ่อนแอ (ค่อนข้างอ่อนแอนับครึ่ง) + 20 × การขาดพันธุ์ต้านทาน/ทนทาน (เป้า 30%)</p>
-      <div class="table-wrap"><table class="risk" data-click><thead><tr><th>${uw}</th><th>ยืนต้น (ไร่)</th><th>ระบาด${state.district ? '*' : ''} (ไร่)</th><th>% ระบาด</th><th>ต้านทาน</th><th>ทนทาน</th><th>ค่อนข้างอ่อนแอ</th><th>อ่อนแอ</th><th>ดัชนี</th><th>ระดับ</th></tr></thead><tbody>${
+    return card2(`ตารางการจัดการโรคใบด่างราย${uw} ปี ${state.year}`, srcBadge('MODEL'), `<p class="hint">ดัชนี (0–100) = 50 × สัดส่วนระบาดต่อพื้นที่ยืนต้น (เต็มที่ 30%) + 30 × สัดส่วนพันธุ์อ่อนแอ (ทั่วไปนับครึ่ง) + 20 × การขาดพันธุ์ต้านทาน/ทนทาน (เป้า 30%)</p>
+      <div class="table-wrap"><table class="risk" data-click><thead><tr><th>${uw}</th><th>ยืนต้น (ไร่)</th><th>ระบาด${state.district ? '*' : ''} (ไร่)</th><th>% ระบาด</th><th>ต้านทาน</th><th>ทนทาน</th><th>ทั่วไป</th><th>อ่อนแอ</th><th>ดัชนี</th><th>ระดับ</th></tr></thead><tbody>${
       rows.map((r) => {
         const dim = state.risk !== 'all' && r.cmdLevel.key !== state.risk;
         return `<tr data-code="${r.code}" class="${state.tambon === r.code ? 'sel' : ''} ${dim ? 'dim' : ''}"><td>${U.esc(r.name)}</td><td>${U.fmt(r.standing ?? r.planted)}</td><td>${U.fmt(r.cmd)}</td><td>${U.pct(r.cmdPct)}</td>
-          <td>${U.fmt(r.resistant)}</td><td>${U.fmt(r.tolerant)}</td><td>${U.fmt(r.modsus)}</td><td>${U.fmt(r.susceptible)}</td><td><span class="score">${r.cmdIndex ?? '–'}</span></td><td>${status(r.cmdLevel)}</td></tr>${actRow(r.code, 10, r.actions, dim)}`;
+          <td>${U.fmt(r.resistant)}</td><td>${U.fmt(r.tolerant)}</td><td>${U.fmt(r.general)}</td><td>${U.fmt(r.susceptible)}</td><td><span class="score">${r.cmdIndex ?? '–'}</span></td><td>${status(r.cmdLevel)}</td></tr>${actRow(r.code, 10, r.actions, dim)}`;
       }).join('')}</tbody></table></div>`);
   }
   function projTableHtml() {
@@ -381,7 +455,7 @@ KPP.App = (function () {
     $('aboutBody').innerHTML = `<div class="about-logos"><img src="assets/img/logo-doae.png" alt="กรมส่งเสริมการเกษตร"><img src="assets/img/seal-kpp.png" alt="จังหวัดกำแพงเพชร"></div>
       <p style="text-align:center"><b>${U.esc(C.TITLE)}</b><br>${U.esc(C.TITLE_EN)} · เวอร์ชัน ${C.VERSION}</p>
       <h3>โมดูล</h3><ul><li>📊 ภาพรวมผู้บริหาร — พื้นที่ปลูก ผลผลิต ความเสี่ยงรวม ข้อเสนอแนะเชิงนโยบาย</li><li>🦠 การจัดการโรคใบด่าง — เปรียบเทียบพื้นที่ปลูก/ระบาด/พันธุ์ต้านทาน-ทนทาน และชุดแผนที่ 4 แผ่น</li><li>🍂 รากเน่าโคนเน่า — ดัชนีความเสี่ยงรายตำบลจากน้ำท่วม ดิน และฤดูปลูก</li><li>🟫 ความเหมาะสมดิน — ชั้น S1–N ของกรมพัฒนาที่ดิน</li></ul>
-      <h3>แหล่งข้อมูล</h3><ul>${['REGISTRY', 'REPORT', 'REPORT_EST', 'PROJECT', 'OFFICIAL', 'PARCEL', 'LDD', 'FLOOD', 'NETWORK'].map((k) => `<li>${srcBadge(k)} ${U.esc(C.SOURCES[k].note)}</li>`).join('')}</ul>
+      <h3>แหล่งข้อมูล</h3><ul>${['REGISTRY', 'REPORT', 'PROJECT', 'OFFICIAL', 'PARCEL', 'LDD', 'FLOOD', 'NETWORK', 'MODEL'].map((k) => `<li>${srcBadge(k)} ${U.esc(C.SOURCES[k].note)}</li>`).join('')}</ul>
       <h3>การคุ้มครองข้อมูลส่วนบุคคล</h3><p>ระบบไม่เก็บเลขบัตรประชาชน ชื่อ ที่อยู่ เบอร์โทร หรือเลขเอกสารสิทธิ์ของเกษตรกร ข้อมูลแปลงบนเว็บไซต์สาธารณะแสดงแบบรวมกริด 1 กิโลเมตร ข้อมูลที่ผู้ใช้นำเข้าจัดเก็บเฉพาะในเบราว์เซอร์ของเครื่องนั้น</p>
       <h3>ผู้พัฒนา</h3><p>พัฒนาโดย <b>${U.esc(C.DEVELOPER)}</b><br>${U.esc(C.DEVELOPER_TITLE)}<br>${U.esc(C.DEVELOPER_UNIT)}<br>กรมส่งเสริมการเกษตร กระทรวงเกษตรและสหกรณ์</p>`;
   }
@@ -403,6 +477,7 @@ KPP.App = (function () {
     $('btnPresent').addEventListener('click', togglePresent);
     document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && document.body.classList.contains('present')) togglePresent(); });
     $('lpToggle').addEventListener('click', (e) => { e.stopPropagation(); const p = $('layerPanel'); p.classList.toggle('collapsed'); $('lpToggle').classList.toggle('on', !p.classList.contains('collapsed')); });
+    $('mapStyle').addEventListener('change', (e) => { M.layers.style = e.target.value; M.layers.choro.on = true; M.refresh(); });
     $('lpClose').addEventListener('click', () => { $('layerPanel').classList.add('collapsed'); $('lpToggle').classList.remove('on'); });
     $('legend').addEventListener('click', (e) => { if (e.target.closest('[data-lgt]')) $('legend').classList.toggle('min'); });
     $('lpBody').addEventListener('change', (e) => {
@@ -430,7 +505,7 @@ KPP.App = (function () {
     $('sideBody').addEventListener('click', (e) => {
       const seg = e.target.closest('#cmdSeg button');
       if (seg) { state.cmdMode = seg.dataset.mode; document.querySelectorAll('#cmdSeg button').forEach((x) => x.classList.toggle('on', x === seg)); CH.cmdCompare(state, state.cmdMode); return; }
-      const chip = e.target.closest('.chip[data-code]');
+      const chip = e.target.closest('.chip[data-code], .plan-row[data-code]');
       const tr = e.target.closest('table[data-click] tr[data-code]');
       const code = (chip || tr || {}).dataset ? (chip || tr).dataset.code : null;
       if (!code) return;

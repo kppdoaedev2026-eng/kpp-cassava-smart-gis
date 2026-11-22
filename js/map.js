@@ -7,7 +7,8 @@ KPP.Map = (function () {
     tambons: { on: true },
     villages: { on: false },
     parcels: { on: true },
-    disease: { on: true, opacity: 0.85, heat: true, hotspots: true, buffers: true },
+    disease: { on: true, opacity: 0.9 },
+    style: 'choro',
     resist: { on: false, opacity: 0.9 },
     flood: { on: true, opacity: 0.8 },
     soil: { on: false, opacity: 0.75 },
@@ -29,8 +30,10 @@ KPP.Map = (function () {
     planted: { label: 'พื้นที่ปลูก (ไร่)', short: 'พื้นที่ปลูก', ramp: 'YlGn', q: true, get: (u) => u.planted, fmt: (v) => U.fmt(v) },
     production: { label: 'ผลผลิต (ตัน)', short: 'ผลผลิต', ramp: 'YlGn', q: true, get: (u) => u.production, fmt: (v) => U.fmt(v) },
     yield: { label: 'ผลผลิตเฉลี่ย (กก./ไร่)', short: 'ผลผลิตต่อไร่', ramp: 'YlGn', q: true, get: (u) => u.yield, fmt: (v) => U.fmt(v) },
-    cmd: { label: 'พื้นที่ระบาดใบด่าง (ไร่)', short: 'พื้นที่ระบาด', ramp: 'YlOrRd', q: true, get: (u) => u.cmd, fmt: (v) => U.fmt(v), est: true },
-    cmdPct: { label: 'สัดส่วนพื้นที่ระบาดใบด่าง (% พื้นที่ยืนต้น)', short: '% ระบาด', ramp: 'YlOrRd', breaks: [0.01, 0.05, 0.15, 0.30], get: (u) => u.cmdPct, fmt: pctF, est: true },
+    cmd: { label: 'พื้นที่ระบาดใบด่าง (ไร่)', short: 'พื้นที่ระบาด', ramp: 'YlOrRd', q: true, get: (u) => u.cmd, fmt: (v) => U.fmt(v), dist: true },
+    cmdPct: { label: 'สัดส่วนพื้นที่ระบาดใบด่าง (% พื้นที่ยืนต้น)', short: '% ระบาด', ramp: 'YlOrRd', breaks: [0.01, 0.05, 0.15, 0.30], get: (u) => u.cmdPct, fmt: pctF, dist: true },
+    coverage: { label: 'ความครอบคลุมทะเบียน (ทะเบียน ÷ พื้นที่ยืนต้น)', short: '% ทะเบียน', ramp: 'Blues', breaks: [0.5, 0.7, 0.9, 1.0], get: (u) => u.coverage, fmt: pctF, dist: true },
+    regGap: { label: 'พื้นที่ยืนต้นที่ยังไม่ขึ้นทะเบียน (ไร่)', short: 'ช่องว่างทะเบียน', ramp: 'YlOrBr', q: true, get: (u) => u.regGap, fmt: (v) => U.fmt(v), dist: true },
     resist: { label: 'พื้นที่พันธุ์ต้านทาน+ทนทาน (ไร่)', short: 'ต้านทาน+ทนทาน', ramp: 'BuGn', q: true, get: (u) => u.resist, fmt: (v) => U.fmt(v) },
     resistPct: { label: 'สัดส่วนพันธุ์ต้านทาน+ทนทาน', short: '% ต้านทาน+ทนทาน', ramp: 'BuGn', breaks: [0.01, 0.03, 0.05, 0.1], get: (u) => u.resistPct, fmt: pctF },
     cmdIndex: { label: 'ดัชนีความเร่งด่วนจัดการโรคใบด่าง (0–100)', short: 'ดัชนีจัดการ', level: 'cmdLevel', breaksTxt: ['< 20', '20–39', '40–59', '≥ 60'], get: (u) => u.cmdIndex, fmt: (v) => U.fmt(v) },
@@ -40,7 +43,7 @@ KPP.Map = (function () {
     soilPoorPct: { label: 'สัดส่วนมันสำปะหลังบนดิน S3+N (LDD)', short: '% บนดิน S3+N', ramp: 'YlOrBr', breaks: [0.1, 0.25, 0.4, 0.6], get: (u) => u.soilPoorPct, fmt: pctF }
   };
   const MODULE_METRICS = {
-    overview: ['planted', 'cmdPct', 'production', 'yield', 'resistPct', 'risk'],
+    overview: ['planted', 'cmdPct', 'coverage', 'regGap', 'resistPct', 'risk', 'production', 'yield'],
     cmd: ['cmdPct', 'cmd', 'resist', 'cmdIndex', 'planted'],
     rootrot: ['rrIndex', 'rrHighPct', 'soilPoorPct'],
     soil: ['soilPoorPct', 'planted']
@@ -52,7 +55,7 @@ KPP.Map = (function () {
     farm: { label: 'แปลงใหญ่มันสำปะหลัง', glyph: 'ป', color: '#008300', sq: true }
   };
   const VCOL = Object.fromEntries(C.VARIETY_CLASSES.map((v) => [v.key, v.color]));
-  const VCODE2KEY = { 2: 'resistant', 1: 'tolerant', 0: 'modsus', '-1': 'susceptible' };
+  const VCODE2KEY = { 2: 'resistant', 1: 'tolerant', 0: 'general', '-1': 'susceptible' };
   const SOILCOL = ['#cbd5e1'].concat(C.SOIL_CLASSES.map((s) => s.color));
   const NA = '#e2e8f0';
 
@@ -69,7 +72,7 @@ KPP.Map = (function () {
     G.resistRenderer = L.canvas({ pane: 'parcels' });
     setBase('light');
     map.on('zoomend moveend', () => { drawParcels(); toggleTambonLabels(); });
-    map.on('zoomend', () => { const hi = map.getZoom() >= 12; if (S && hi !== lastHi) { lastHi = hi; drawDisease(); buildLegend(); } });
+    map.on('zoomend', () => { const hi = map.getZoom() >= 12; if (S && hi !== lastHi) { lastHi = hi; buildLegend(); } });
     map.on('click', onMapClick);
     G.floodRenderer.addTo(map);
     injectHatch(G.floodRenderer._container);
@@ -146,6 +149,42 @@ KPP.Map = (function () {
     return { m, color: (u) => { const v = m.get(u); return U.isNum(v) ? pal[idx(v)] : NA; }, classes };
   }
 
+  /* ---------- Bivariate (3×3) ---------- */
+  const BIV_COLORS = [['#e8e8e8', '#e4acac', '#c85a5a'], ['#b0d5df', '#ad9ea5', '#985356'], ['#64acbe', '#627f8c', '#574249']];
+  const BIVAR = {
+    overview: { x: { label: '% ระบาดใบด่าง', get: (u) => u.cmdPct, br: [0.05, 0.15], fmt: pctF }, y: { label: '% ต้านทาน+ทนทาน', get: (u) => u.resistPct, br: [0.01, 0.05], fmt: pctF } },
+    cmd: { x: { label: '% ระบาดใบด่าง', get: (u) => u.cmdPct, br: [0.05, 0.15], fmt: pctF }, y: { label: '% ต้านทาน+ทนทาน', get: (u) => u.resistPct, br: [0.01, 0.05], fmt: pctF } },
+    rootrot: { x: { label: 'คะแนนน้ำท่วมซ้ำซาก', get: (u) => (u.rrParts ? u.rrParts.flood : null), br: [15, 30], fmt: (v) => U.fmt(v) }, y: { label: '% ปลูกบนดิน S3+N', get: (u) => u.soilPoorPct, br: [0.25, 0.5], fmt: pctF } }
+  };
+  const tri = (v, br) => (v < br[0] ? 0 : v < br[1] ? 1 : 2);
+  function bivarColor(u) {
+    const b = BIVAR[module]; if (!b || !u) return NA;
+    const x = b.x.get(u), y = b.y.get(u);
+    if (!U.isNum(x) || !U.isNum(y)) return NA;
+    return BIV_COLORS[tri(y, b.y.br)][tri(x, b.x.br)];
+  }
+  function drawSymbols() {
+    if (G.sym) { map.removeLayer(G.sym); G.sym = null; }
+    if (!L_.choro.on || (L_.style !== 'bubble' && L_.style !== 'label')) return;
+    G.sym = L.layerGroup().addTo(map);
+    const m = METRICS[L_.choro.metric];
+    const vals = units.map((u) => m.get(u)).filter((v) => U.isNum(v) && v > 0);
+    const max = Math.max(...vals, 1e-9);
+    units.forEach((u) => {
+      const v = m.get(u); if (!U.isNum(v)) return;
+      const c = u.code.length === 4 ? (() => { const b = L.geoJSON(DA.D.dByCode[u.code].feature).getBounds().getCenter(); return [b.lat, b.lng]; })() : DA.D.centroid[u.code];
+      if (!c) return;
+      if (L_.style === 'bubble') {
+        const r = 4 + 30 * Math.sqrt(Math.max(v, 0) / max);
+        L.circleMarker(c, { pane: 'outline', radius: r, color: '#ffffff', weight: 1.5, fillColor: scheme.color(u), fillOpacity: 0.88 })
+          .bindTooltip(() => unitTooltip(u.code, u.code.length === 6), { sticky: true, direction: 'top' })
+          .on('click', () => (u.code.length === 6 ? KPP.App.selectTambon(u.code) : KPP.App.selectDistrict(u.code))).addTo(G.sym);
+      } else {
+        L.marker(c, { pane: 'labels', interactive: false, icon: L.divIcon({ className: 'vlabel', html: `<div class="vl"><b>${m.fmt(v)}</b><span>${U.esc(u.name)}</span></div>`, iconSize: null }) }).addTo(G.sym);
+      }
+    });
+  }
+
   /* ---------- main render ---------- */
   let S = null, units = [], unitsByCode = {}, scheme = null, lastHi = false;
   function computeUnits(metricKey, st = S) {
@@ -165,6 +204,7 @@ KPP.Map = (function () {
     scheme = classify(L_.choro.metric, units.filter((u) => !(U.isNum(u.planted) && u.planted < 50 && L_.choro.metric !== 'planted')));
     drawProvince();
     drawChoropleth();
+    drawSymbols();
     drawTambonOutline();
     drawFlood();
     drawSoil();
@@ -184,6 +224,12 @@ KPP.Map = (function () {
     const ms = MODULE_METRICS[module];
     el.innerHTML = ms.map((k) => `<button data-metric="${k}" class="${L_.choro.metric === k ? 'on' : ''}">${METRICS[k].short}</button>`).join('')
       + (module === 'cmd' ? '<button class="atlas-btn" data-atlas>🗺️ ชุดแผนที่ 4 แผ่น</button>' : '');
+    const st = document.getElementById('mapStyle');
+    if (st) {
+      const opts = [['choro', 'ระบายสี'], ['bubble', 'วงกลมสัดส่วน'], ['label', 'ตัวเลขบนแผนที่']].concat(BIVAR[module] ? [['bivar', 'สองตัวแปร']] : []);
+      if (!opts.some((o) => o[0] === L_.style)) L_.style = 'choro';
+      st.innerHTML = opts.map(([k, l]) => `<option value="${k}" ${L_.style === k ? 'selected' : ''}>${l}</option>`).join('');
+    }
   }
 
   function drawProvince() {
@@ -194,13 +240,14 @@ KPP.Map = (function () {
 
   function unitStyle(code, isTambon) {
     const u = unitsByCode[code];
-    const fill = u ? scheme.color(u) : NA;
+    const fill = u ? (L_.style === 'bivar' ? bivarColor(u) : scheme.color(u)) : NA;
+    const faint = L_.style === 'bubble';
     const sel = isTambon ? S.tambon === code : S.district === code;
     const lv = u && (u.cmdLevel && L_.choro.metric === 'cmdIndex' ? u.cmdLevel : u.rrLevel && L_.choro.metric.startsWith('rr') ? u.rrLevel : u.level);
     const riskDim = S.risk !== 'all' && u && (!lv || lv.key !== S.risk);
     return {
       pane: 'choro', color: sel ? '#D97706' : isTambon ? '#64748b' : '#065F46', weight: sel ? 3.5 : isTambon ? 0.8 : 1.6,
-      fillColor: fill, fillOpacity: L_.choro.on ? (riskDim ? 0.06 : L_.choro.opacity) : 0,
+      fillColor: faint ? '#e2e8f0' : fill, fillOpacity: L_.choro.on ? (riskDim ? 0.06 : faint ? 0.25 : L_.choro.opacity) : 0,
       opacity: riskDim ? 0.35 : 0.9
     };
   }
@@ -244,12 +291,12 @@ KPP.Map = (function () {
     if (!u) return '<b>' + U.esc(name) + '</b>';
     const m = METRICS[L_.choro.metric];
     const rows = [[m.label, m.fmt(m.get(u))]];
-    if (module === 'cmd') rows.push(['พื้นที่ยืนต้น / ทะเบียน', `${U.fmt(u.standing)} / ${U.fmt(u.planted)} ไร่`], ['ระบาดใบด่าง*', `${U.fmt(u.cmd)} ไร่ (${U.pct(u.cmdPct)})${u.cmdFarmers ? ' · ' + U.fmt(u.cmdFarmers) + ' ราย' : ''}`], ['แปลงส่งเสริมพันธุ์', u.projPlots ? `${u.projPlots} แปลง · ${U.fmt(u.projRai, 1)} ไร่` : '–'], ['ต้านทาน / ทนทาน', `${U.fmt(u.resistant)} / ${U.fmt(u.tolerant)} ไร่`], ['ค่อนข้างอ่อนแอ / อ่อนแอ', `${U.fmt(u.modsus)} / ${U.fmt(u.susceptible)} ไร่`], ['ระดับการจัดการ', lvl(u.cmdLevel)]);
+    if (module === 'cmd') rows.push(['พื้นที่ยืนต้น / ทะเบียน', `${U.fmt(u.standing)} / ${U.fmt(u.planted)} ไร่`], ['ระบาดใบด่าง', U.isNum(u.cmd) ? `${U.fmt(u.cmd)} ไร่ (${U.pct(u.cmdPct)})${u.cmdFarmers ? ' · ' + U.fmt(u.cmdFarmers) + ' ราย' : ''}` : 'ยังไม่มีผลสำรวจรายตำบล'], ['แปลงส่งเสริมพันธุ์', u.projPlots ? `${u.projPlots} แปลง · ${U.fmt(u.projRai, 1)} ไร่` : '–'], ['ต้านทาน / ทนทาน', `${U.fmt(u.resistant)} / ${U.fmt(u.tolerant)} ไร่`], ['ทั่วไป / อ่อนแอ', `${U.fmt(u.general)} / ${U.fmt(u.susceptible)} ไร่`], ['ระดับการจัดการ', lvl(u.cmdLevel)]);
     else if (module === 'rootrot') rows.push(['พื้นที่ปลูก (ทะเบียน)', U.fmt(u.regPlanted) + ' ไร่'], ['ระดับความเสี่ยง', lvl(u.rrLevel)], ['ปัจจัย น้ำท่วม/ดิน/ฤดูฝน', u.rrParts ? `${U.fmt(u.rrParts.flood)} / ${U.fmt(u.rrParts.soil)} / ${U.fmt(u.rrParts.rain)}` : '–'], ['ปลูกบนดิน S3+N', U.pct(u.soilPoorPct)], ['ปลูกช่วงฤดูฝน', U.pct(u.rainyPct)]);
     else if (module === 'soil') rows.push(['มันฯ บนดิน S1/S2', `${U.fmt(u.soil_S1)} / ${U.fmt(u.soil_S2)} ไร่`], ['มันฯ บนดิน S3/N', `${U.fmt(u.soil_S3)} / ${U.fmt(u.soil_N)} ไร่`], ['นอกพื้นที่ประเมิน', U.fmt(u.soil_none) + ' ไร่']);
-    else rows.push(['พื้นที่ปลูก (ทะเบียน)', U.fmt(u.planted) + ' ไร่' + (u.hh ? ` · ${U.fmt(u.hh)} ครัวเรือน` : '')], ['ผลผลิต', U.fmt(u.production) + ' ตัน'], ['ผลผลิตเฉลี่ย', U.fmt(u.yield) + ' กก./ไร่'], ['ระบาดใบด่าง*', `${U.fmt(u.cmd)} ไร่ (${U.pct(u.cmdPct)})`], ['ต้านทาน+ทนทาน', `${U.fmt(u.resist)} ไร่ (${U.pct(u.resistPct)})`], ['ทับซ้อนน้ำท่วมซ้ำซาก', U.fmt(u.flood) + ' ไร่']);
+    else rows.push(['พื้นที่ปลูก (ทะเบียน)', U.fmt(u.planted) + ' ไร่' + (u.hh ? ` · ${U.fmt(u.hh)} ครัวเรือน` : '')], ['ผลผลิต', U.fmt(u.production) + ' ตัน'], ['ผลผลิตเฉลี่ย', U.fmt(u.yield) + ' กก./ไร่'], ['ระบาดใบด่าง', U.isNum(u.cmd) ? `${U.fmt(u.cmd)} ไร่ (${U.pct(u.cmdPct)})` : '–'], ['ทะเบียน/ยืนต้น', U.pct(u.coverage)], ['ต้านทาน+ทนทาน', `${U.fmt(u.resist)} ไร่ (${U.pct(u.resistPct)})`], ['ทับซ้อนน้ำท่วมซ้ำซาก', U.fmt(u.flood) + ' ไร่']);
     return `<div class="pp"><h4>${isTambon ? 'ต.' : 'อ.'}${U.esc(name)}${dn ? ' <small>อ.' + U.esc(dn) + '</small>' : ''}</h4><table>${rows.map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join('')}</table>
-      <div class="hint">${(module === 'cmd' || module === 'overview') && u.src.disease ? '* ใบด่าง: ' + (C.SOURCES[u.src.disease] || {}).label + ' · ' : ''}คลิกเพื่อเจาะลึก</div></div>`;
+      <div class="hint">${(module === 'cmd' || module === 'overview') && u.src.disease ? 'ใบด่าง: ' + (C.SOURCES[u.src.disease] || {}).label + ' · ' : ''}% พันธุ์คิดจากผังแปลงดิจิทัล · คลิกเพื่อเจาะลึก</div></div>`;
   }
   const lvl = (l) => (l ? `<span class="status ${l.key}"><i>${l.icon}</i>${l.label}</span>` : '–');
 
@@ -364,51 +411,42 @@ KPP.Map = (function () {
     G.soil = L.imageOverlay('assets/ldd_cassava_suitability.png', window.KPP_LDD.bounds, { pane: 'soil', opacity: L_.soil.opacity, interactive: false, className: 'soil-img' }).addTo(map);
   }
 
-  /* ---------- Layer 2: Disease ---------- */
-  function diseaseKeys() { return ['cmd']; }
+  /* ---------- Layer 2: CMD — รายงานจริงรายอำเภอ (จุดสรุป) ---------- */
   function inScope(i) {
     const P = DA.D.P;
     return S.tambon ? P.tcode[i] === S.tambon : S.district ? P.dcode[i] === S.district : true;
   }
   function drawDisease() {
-    ['heat', 'hot', 'buf'].forEach((k) => { if (G[k]) { map.removeLayer(G[k]); G[k] = null; } });
-    if (!L_.disease.on) return;
-    const P = DA.D.P, keys = diseaseKeys();
-    const pts = [], tSum = {};
-    let max = 0;
-    for (let i = 0; i < P.n; i++) {
-      if (!inScope(i)) continue;
-      let w = 0; keys.forEach((k) => { w += P[k][i]; });
-      if (w > 0) { pts.push([P.lat[i], P.lng[i], w]); if (w > max) max = w; tSum[P.tcode[i]] = (tSum[P.tcode[i]] || 0) + w; }
-    }
-    const hi = map.getZoom() >= 12;
-    if (L_.disease.heat && pts.length && !hi) {
-      G.heat = L.heatLayer(pts.map((p) => [p[0], p[1], Math.min(1, p[2] / (max * 0.6))]), {
-        pane: 'heat', radius: 14, blur: 16, maxZoom: 13, max: 3, minOpacity: 0.1,
-        gradient: { 0.2: '#fde68a', 0.45: '#fb923c', 0.7: '#ef4444', 1: '#7f1d1d' }
-      }).addTo(map);
-      if (G.heat._canvas) G.heat._canvas.style.opacity = L_.disease.opacity;
-    }
-    const top = Object.entries(tSum).sort((a, b) => b[1] - a[1]).slice(0, S.district ? 5 : 8);
+    if (G.hot) { map.removeLayer(G.hot); G.hot = null; }
+    const rep = DA.D.rep.cmd;
+    if (!L_.disease.on || !rep || S.year !== 2569) return;
     G.hot = L.layerGroup().addTo(map);
-    G.buf = L.layerGroup().addTo(map);
-    top.forEach(([tc, rai], idx) => {
-      const c = DA.D.centroid[tc]; if (!c) return;
-      if (L_.disease.buffers && !hi) C.SURVEILLANCE_RADII_KM.forEach((km, j) => L.circle(c, { radius: km * 1000, pane: 'heat', color: j ? '#f46d43' : '#b2182b', weight: 1.3, dashArray: '6 5', fill: j === 0, fillColor: '#b2182b', fillOpacity: 0.05 * L_.disease.opacity, opacity: L_.disease.opacity, interactive: false }).addTo(G.buf));
-      if (L_.disease.hotspots) {
-        L.marker(c, { icon: L.divIcon({ className: '', html: `<div class="pulse ${idx < 3 ? '' : 'orange'}"><i></i></div>`, iconSize: [18, 18], iconAnchor: [9, 9] }), zIndexOffset: 500 })
-          .bindPopup(() => hotspotPopup(tc, rai, idx + 1)).addTo(G.hot);
-      }
+    const max = Math.max(...Object.values(rep.districts).map((d) => d.now.total.rai), 1);
+    Object.entries(rep.districts).forEach(([dc, d]) => {
+      if (S.district && dc !== S.district) return;
+      const rai = d.now.total.rai; if (!(rai > 0)) return;
+      const pct = d.standing.total.rai ? rai / d.standing.total.rai : 0;
+      const lv = DA.severity(pct);
+      const sz = Math.round(22 + 46 * Math.sqrt(rai / max));
+      const c = DA.D.centroid[dc];
+      L.marker(c, { zIndexOffset: 700, icon: L.divIcon({ className: '', html: `<div class="cmd-mark ${lv.key}" style="width:${sz}px;height:${sz}px"><b>${U.pct(pct, 0)}</b></div>`, iconSize: [sz, sz], iconAnchor: [sz / 2, sz / 2] }) })
+        .bindPopup(() => cmdPopup(dc)).addTo(G.hot);
     });
   }
-  function hotspotPopup(tc, rai, rank) {
-    const t = DA.D.tambons[tc], u = DA.agg(S.year, { tambon: tc }), np = DA.nearestPest(tc);
-    return `<div class="pp"><h4>🦠 จุดเฝ้าระวังอันดับ ${rank}: ต.${U.esc(t.name)}</h4><table>
-      <tr><td>พื้นที่ระบาดใบด่าง (ประมาณ)</td><td>${U.fmt(u.cmd)} ไร่ · ${U.pct(u.cmdPct)}</td></tr>
-      <tr><td>พันธุ์อ่อนแอในตำบล</td><td>${U.fmt(u.susceptible)} ไร่</td></tr>
-      <tr><td>รัศมีเฝ้าระวัง</td><td>${C.SURVEILLANCE_RADII_KM.join(' / ')} กม.</td></tr>
-      <tr><td>ศจช. ใกล้ที่สุด</td><td>${np ? U.esc(np.row.name) + ' (' + U.fmt(np.km, 1) + ' กม.)' : '–'}</td></tr>
-    </table><div class="pp-src"><span class="badge src-est" title="${U.esc(C.SOURCES.REPORT_EST.note)}">ประมาณรายตำบลจากรายงานจริง</span></div></div>`;
+  function cmdPopup(dc) {
+    const rep = DA.D.rep.cmd, d = rep.districts[dc];
+    const ages = [['lt3', '< 3 เดือน'], ['m3_5', '3–5 เดือน'], ['m6_8', '6–8 เดือน'], ['gt8', '> 8 เดือน']];
+    const hist = (DA.D.rep.cmd_history || []).filter((h) => h.districts[dc]);
+    const prev = hist.length > 1 ? hist[hist.length - 2].districts[dc] : null;
+    const diff = prev ? d.now.total.rai - prev.cmd : null;
+    return `<div class="pp"><h4>🦠 อ.${U.esc(DA.D.dByCode[dc].name)} · โรคใบด่าง</h4><table>
+      <tr><td>พื้นที่ระบาด</td><td><b>${U.fmt(d.now.total.rai)}</b> ไร่ (${U.pct(U.safeDiv(d.now.total.rai, d.standing.total.rai))})</td></tr>
+      <tr><td>เกษตรกรได้รับผลกระทบ</td><td>${U.fmt(d.now.total.farmers)} ราย</td></tr>
+      <tr><td>พื้นที่ยืนต้น</td><td>${U.fmt(d.standing.total.rai)} ไร่</td></tr>
+      ${ages.map(([k, l]) => `<tr><td>อายุ ${l}</td><td>${U.fmt(d.now[k].rai)} ไร่</td></tr>`).join('')}
+      <tr><td>เทียบรอบก่อน</td><td>${diff === null ? (d.trend ? U.esc(d.trend) : '–') : (diff > 0 ? '▲ +' : diff < 0 ? '▼ ' : '') + U.fmt(diff) + ' ไร่'}</td></tr>
+      <tr><td>ตรวจสอบแล้ว</td><td>${U.esc(d.checked || '–')}</td></tr></table>
+      <div class="pp-src"><span class="badge src-real" title="${U.esc(C.SOURCES.REPORT.note)}">รายงานระบาด ${U.esc(rep.period.replace(/วัน\S+ที่ /g, ''))}</span></div></div>`;
   }
 
   /* ---------- Layer 3: Resistant / tolerant ---------- */
@@ -497,7 +535,6 @@ KPP.Map = (function () {
           <tr><td>แปลงขึ้นทะเบียน</td><td>${U.fmt(v.n)} แปลง</td></tr>
           <tr><td>พื้นที่ปลูก</td><td>${U.fmt(v.rai)} ไร่</td></tr>
           <tr><td>ต้านทาน / ทนทาน</td><td>${U.fmt(v.resistant)} / ${U.fmt(v.tolerant)} ไร่</td></tr>
-          <tr><td>ระบาดใบด่าง (ประมาณ)</td><td>${U.fmt(v.cmd)} ไร่</td></tr>
           <tr><td>ทับซ้อนน้ำท่วม (ประมาณ)</td><td>${U.fmt(v.flood)} ไร่</td></tr></table>
           <div class="hint">ตำแหน่ง = ค่าเฉลี่ยพิกัดแปลงในหมู่บ้าน</div></div>`)
         .addTo(G.vil);
@@ -516,7 +553,6 @@ KPP.Map = (function () {
     const P = DA.D.P, t = DA.D.tambons[P.tcode[i]] || {};
     const b = P.breeds[P.breed[i]];
     const vc = C.VARIETY_CLASSES.find((v) => v.key === VCODE2KEY[P.res[i]]);
-    const dis = DA.DIS.filter((k) => P[k][i] > 0).map((k) => C.DISEASES.find((d) => d.key === k).short);
     const soil = P.soil[i] ? C.SOIL_CLASSES[P.soil[i] - 1].label : 'นอกพื้นที่ประเมิน';
     const grp = DA.D.P.aggregated;
     return `<div class="pp"><h4>${grp ? `กลุ่มแปลง ${P.cnt[i]} แปลง` : 'แปลงมันสำปะหลัง'}</h4><table>
@@ -528,9 +564,8 @@ KPP.Map = (function () {
       <tr><td>ความเสี่ยงรากเน่าโคนเน่า</td><td>${Math.round(P.rr[i] * 100)}/100</td></tr>
       <tr><td>วันปลูก → เก็บเกี่ยว</td><td>${P.plant[i] || '–'} → ${P.harvest[i] || '–'}</td></tr>
       <tr><td>พื้นที่เสียหายที่รายงาน</td><td>${P.disRai[i] ? U.fmt(P.disRai[i], 1) + ' ไร่' : '–'}</td></tr>
-      <tr><td>โรค/ศัตรูพืช*</td><td>${dis.length ? dis.join(', ') : 'ไม่พบ'}</td></tr>
     </table>${grp ? `<div class="hint">ตำแหน่งแสดงเป็นจุดกึ่งกลางกริด ${U.fmt(DA.D.P.grid)} ม. เพื่อคุ้มครองข้อมูลส่วนบุคคล</div>` : ''}
-    <div class="pp-src"><span class="badge src-real">DOAE ทะเบียนแปลง</span><span class="badge src-sim">* โรค = ข้อมูลจำลอง</span></div></div>`;
+    <div class="pp-src"><span class="badge src-real">DOAE ผังแปลงดิจิทัล</span><span class="badge src-real">LDD</span></div></div>`;
   }
   function loadPolys() {
     if (window.KPP_PARCEL_POLYS || polysLoading || DA.D.P.aggregated) return;
@@ -547,7 +582,7 @@ KPP.Map = (function () {
     const z = map.getZoom();
     const show = L_.parcels.on && z >= 12;
     const b = map.getBounds().pad(0.15);
-    const key = [show, z >= 14, b.toBBoxString(), S.district, S.tambon, S.disease, L_.disease.on, module].join('|');
+    const key = [show, z >= 14, b.toBBoxString(), S.district, S.tambon, module].join('|');
     if (!force && key === lastParcelKey) return;
     lastParcelKey = key;
     if (G.parcels) { map.removeLayer(G.parcels); G.parcels = null; }
@@ -556,13 +591,11 @@ KPP.Map = (function () {
     G.parcels = L.layerGroup().addTo(map);
     if (P.aggregated) { drawGridCells(b); return; }
     if (z >= 14 && !polys) loadPolys();
-    const keys = diseaseKeys();
     let count = 0;
     for (let i = 0; i < P.n; i++) {
       if (!b.contains([P.lat[i], P.lng[i]])) continue;
       if (++count > 6000) break;
-      const sick = L_.disease.on && keys.some((k) => P[k][i] > 0);
-      const style = { renderer: G.parcelRenderer, color: sick ? '#b2182b' : '#1e293b', weight: sick ? 2.2 : 0.7, fillColor: parcelColor(i), fillOpacity: 0.8 };
+      const style = { renderer: G.parcelRenderer, color: '#1e293b', weight: 0.7, fillColor: parcelColor(i), fillOpacity: 0.8 };
       let lyr;
       if (z >= 14 && polys && polys[i]) {
         const c = polys[i], ll = [];
@@ -583,7 +616,7 @@ KPP.Map = (function () {
       if (!b.contains([P.lat[i], P.lng[i]])) continue;
       const id = P.lat[i] + ',' + P.lng[i];
       const c = cells.get(id) || { lat: P.lat[i], lng: P.lng[i], rai: 0, n: 0, by: {}, rr: 0, cmd: 0, tcode: P.tcode[i] };
-      c.rai += P.rai[i]; c.n += P.cnt[i]; c.rr += P.rr[i] * P.rai[i]; c.cmd += P.cmd[i];
+      c.rai += P.rai[i]; c.n += P.cnt[i]; c.rr += P.rr[i] * P.rai[i];
       if (key) { const k = key(i); c.by[k] = (c.by[k] || 0) + P.rai[i]; }
       cells.set(id, c);
     }
@@ -596,8 +629,7 @@ KPP.Map = (function () {
         fill = module === 'soil' ? SOILCOL[+dom] : VCOL[VCODE2KEY[dom]];
       }
       const dl = half / Math.cos(c.lat * Math.PI / 180) * 0.94, dt = half * 0.94;
-      const sick = L_.disease.on && c.cmd / c.rai >= 0.3;
-      L.rectangle([[c.lat - dt, c.lng - dl], [c.lat + dt, c.lng + dl]], { renderer: G.parcelRenderer, color: sick ? '#b2182b' : '#ffffff', weight: sick ? 2 : 0.8, fillColor: fill, fillOpacity: 0.72 })
+      L.rectangle([[c.lat - dt, c.lng - dl], [c.lat + dt, c.lng + dl]], { renderer: G.parcelRenderer, color: '#ffffff', weight: 0.8, fillColor: fill, fillOpacity: 0.72 })
         .bindPopup(() => cellPopup(c)).addTo(G.parcels);
     });
   }
@@ -609,8 +641,7 @@ KPP.Map = (function () {
     }).join('');
     return `<div class="pp"><h4>ช่องกริด 1 กม. · ต.${U.esc(t.name || '')}</h4><table>
       <tr><td>แปลงขึ้นทะเบียน</td><td>${U.fmt(c.n)} แปลง</td></tr><tr><td>พื้นที่ปลูก</td><td>${U.fmt(c.rai)} ไร่</td></tr>${rows}
-      <tr><td>ความเสี่ยงรากเน่าโคนเน่า</td><td>${Math.round(100 * c.rr / c.rai)}/100</td></tr>
-      <tr><td>ระบาดใบด่าง (ประมาณ)</td><td>${U.fmt(c.cmd)} ไร่</td></tr></table>
+      <tr><td>ความเสี่ยงรากเน่าโคนเน่า</td><td>${Math.round(100 * c.rr / c.rai)}/100</td></tr></table>
       <div class="hint">ข้อมูลเผยแพร่แบบรวมกริด 1 กม. เพื่อคุ้มครองข้อมูลส่วนบุคคล</div></div>`;
   }
 
@@ -667,19 +698,21 @@ KPP.Map = (function () {
     const h = [];
     if (L_.choro.on && scheme) {
       const m = scheme.m;
-      h.push(`<h4>${m.label}</h4><div class="hint" style="margin:0 0 3px">${(tambonLevel() || S.district) ? 'รายตำบล' : 'รายอำเภอ'} · ปี ${S.year}${m.est ? (tambonLevel() || S.district ? ' · <span class="badge src-est">ประมาณรายตำบล</span>' : ' · <span class="badge src-real">รายงานจริง</span>') : ''}</div>`);
-      h.push(legendClasses(scheme.classes));
+      h.push(`<h4>${m.label}</h4><div class="hint" style="margin:0 0 3px">${(tambonLevel() || S.district) ? 'รายตำบล' : 'รายอำเภอ'} · ปี ${S.year}${m.dist && (tambonLevel() || S.district) ? ' · มีข้อมูลรายอำเภอเท่านั้น' : ''}</div>`);
+      if (L_.style === 'bivar' && BIVAR[module]) {
+        const bv = BIVAR[module];
+        h.push(`<div class="biv"><div class="biv-grid">${[2, 1, 0].map((yi) => [0, 1, 2].map((xi) => `<i style="background:${BIV_COLORS[yi][xi]}"></i>`).join('')).join('')}</div>
+          <div class="biv-ax"><span>→ ${U.esc(bv.x.label)} (${bv.x.br.map(bv.x.fmt).join(' / ')})</span><span>↑ ${U.esc(bv.y.label)} (${bv.y.br.map(bv.y.fmt).join(' / ')})</span><span>สีแดงเข้ม = ${U.esc(bv.x.label)} สูง แต่ ${U.esc(bv.y.label)} ต่ำ (ควรเร่งดำเนินการ)</span></div></div>`);
+      } else h.push(legendClasses(scheme.classes));
+      if (L_.style === 'bubble') h.push('<div class="hint">ขนาดวงกลมตามค่าตัวชี้วัด</div>');
       if (units.some((u) => !U.isNum(m.get(u)))) h.push(`<div class="cls-row"><span class="sw" style="background:${NA}"></span>ไม่มีข้อมูลในระดับนี้</div>`);
     }
     if (L_.soil.on && window.KPP_LDD && !custom.some((c) => c.role === 'soil')) {
       h.push(`<h4>🟫 ความเหมาะสมดินมันสำปะหลัง</h4>${legendClasses(C.SOIL_CLASSES.map((s) => ({ color: s.color, label: s.label })))}<div class="lg-src"><span class="badge src-real" title="${U.esc(C.SOURCES.LDD.note)}">LDD Agri-Map 2564</span></div><div class="hint">คลิกบนแผนที่เพื่อดูชั้นดิน</div>`);
     }
-    if (L_.disease.on) {
-      h.push(`<h4>🦠 การกระจายโรคใบด่าง <span class="badge src-est" title="${U.esc(C.SOURCES.REPORT_EST.note)}">ประมาณจากรายงาน</span></h4>`);
-      if (map.getZoom() >= 12) h.push('<div class="hint">ซูมออกเพื่อดูความหนาแน่นและรัศมีเฝ้าระวัง</div>');
-      else if (L_.disease.heat) h.push('<div class="ramp"><i style="background:#fde68a"></i><i style="background:#fb923c"></i><i style="background:#ef4444"></i><i style="background:#7f1d1d"></i></div><div class="ramp-lab"><span>เบาบาง</span><span>หนาแน่น</span></div>');
-      if (L_.disease.hotspots) h.push('<div class="lg-row"><span class="sw" style="background:#d03b3b;border-radius:50%"></span>จุดระบาดสำคัญ (Hotspot)</div>');
-      if (L_.disease.buffers) h.push(`<div class="lg-row"><span class="sw" style="border:1.5px dashed #b2182b;background:none;border-radius:50%"></span>รัศมีเฝ้าระวัง ${C.SURVEILLANCE_RADII_KM.join('/')} กม.</div>`);
+    if (L_.disease.on && DA.D.rep.cmd && S.year === 2569) {
+      h.push(`<h4>🦠 โรคใบด่างรายอำเภอ <span class="badge src-real">รายงานจริง</span></h4><div class="hint" style="margin:0">ขนาด = พื้นที่ระบาด · ตัวเลข = % ของพื้นที่ยืนต้น</div>`);
+      DA.LV4.slice().reverse().forEach((l) => h.push(`<div class="lg-row"><span class="sw" style="background:${l.color};border-radius:50%"></span>${l.icon} ${l.label}</div>`));
     }
     if (L_.resist.on) h.push(`<h4>🛡️ พันธุ์ต้านทาน/ทนทาน</h4><div class="lg-row"><span class="proj-icon" style="width:18px;height:18px;font-size:9px"><b>n</b></span>แปลงส่งเสริมพันธุ์ (จำนวนแปลง/ตำบล)</div><div class="lg-row"><span class="sw" style="background:${VCOL.resistant};border-radius:50%"></span>ต้านทาน</div><div class="lg-row"><span class="sw" style="background:${VCOL.tolerant};border-radius:50%"></span>ทนทาน</div>`);
     if (L_.flood.on) h.push(`<h4>🌊 น้ำท่วมซ้ำซาก</h4><div class="lg-row"><span class="hatch-sw"></span>${DA.D.flood.polygons ? 'ขอบเขตที่นำเข้า' : 'ตำบลน้ำท่วม 2 ปี'}</div>${DA.D.flood.polygons ? '' : '<div class="lg-row"><span class="hatch-sw" style="border-width:2.5px"></span>ตำบลน้ำท่วม ≥ 3 ปี (2563–2569)</div>'}`);
@@ -691,7 +724,7 @@ KPP.Map = (function () {
     if (L_.villages.on) h.push('<h4>🏠 หมู่บ้าน</h4><div class="lg-row"><span class="sw" style="background:#065F46;border-radius:50%"></span>จุดรวมแปลงรายหมู่ (ทะเบียน 2569)</div>');
     if (L_.parcels.on && map.getZoom() >= 12) {
       const items = module === 'soil' ? C.SOIL_CLASSES.map((s) => [s.color, s.label]) : module === 'rootrot' ? DA.LV4.map((l) => [l.color, 'เสี่ยง' + l.label]).reverse() : C.VARIETY_CLASSES.map((v) => [v.color, 'พันธุ์' + v.label]);
-      h.push(`<h4>${DA.D.P.aggregated ? 'ช่องกริด 1 กม. (ซูม ≥ 12)' : 'แปลง (ซูม ≥ 12)'}</h4>${items.map(([c, l]) => `<div class="lg-row"><span class="sw" style="background:${c}"></span>${l}</div>`).join('')}${L_.disease.on ? `<div class="lg-row"><span class="sw" style="border:2px solid #b2182b"></span>${DA.D.P.aggregated ? 'ระบาดใบด่าง ≥ 30% (ประมาณ)' : 'พบโรคใบด่าง (ประมาณ)'}</div>` : ''}`);
+      h.push(`<h4>${DA.D.P.aggregated ? 'ช่องกริด 1 กม. (ซูม ≥ 12)' : 'แปลง (ซูม ≥ 12)'}</h4>${items.map(([c, l]) => `<div class="lg-row"><span class="sw" style="background:${c}"></span>${l}</div>`).join('')}`);
     }
     custom.filter((c) => c.on).forEach((c) => h.push(`<h4>${U.esc(c.name)}</h4><div class="lg-row"><span class="sw" style="background:${c.color}"></span>${c.count} รายการ (นำเข้า)</div>`));
     el.innerHTML = `<div class="lg-title" data-lgt>🗺️ คำอธิบายสัญลักษณ์ <span class="lg-caret">▾</span></div><div class="lg-body">${h.join('')}</div>`;
@@ -769,8 +802,9 @@ KPP.Map = (function () {
     const hatch = []; if (G.flood && L_.flood.on) G.flood.eachLayer((l) => hatch.push(l.feature.geometry));
     const points = [];
     if (G.net) G.net.eachLayer((m) => { const html = m.options.icon.options.html; points.push({ lat: m.getLatLng().lat, lng: m.getLatLng().lng, color: (html.match(/background:([^"]+)"/) || [])[1] || '#334155', glyph: (html.match(/>([^<]+)<\/div>/) || [])[1] || '', r: 8 }); });
-    if (G.hot) G.hot.eachLayer((m) => points.push({ lat: m.getLatLng().lat, lng: m.getLatLng().lng, color: '#b2182b', r: 6 }));
-    const circles = []; if (G.buf) G.buf.eachLayer((c) => circles.push({ lat: c.getLatLng().lat, lng: c.getLatLng().lng, km: c.getRadius() / 1000, color: c.options.color }));
+    if (G.hot) G.hot.eachLayer((m) => { const w = m.options.icon.options.iconSize[0]; const html = m.options.icon.options.html; const lv = (html.match(/cmd-mark (\w+)/) || [])[1]; points.push({ lat: m.getLatLng().lat, lng: m.getLatLng().lng, color: (DA.LV4.find((x) => x.key === lv) || {}).color || '#b2182b', r: w / 2.4, glyph: (html.match(/<b>([^<]+)<\/b>/) || [])[1] || '' }); });
+    if (G.sym && L_.style === 'bubble') G.sym.eachLayer((c) => { if (c.getRadius) points.push({ lat: c.getLatLng().lat, lng: c.getLatLng().lng, color: c.options.fillColor, r: c.getRadius() }); });
+    const circles = [];
     drawStatic(g, 0, 0, W, H, { features: feats, hatch, points, circles, image: L_.soil.on ? soilImageEl() : null, districtLines: !(tambonLevel() && !S.district) || true });
     return cv;
   }
@@ -801,7 +835,7 @@ KPP.Map = (function () {
     let syncing = false;
     data.forEach((a, i) => {
       const cell = document.createElement('div'); cell.className = 'atlas-cell';
-      cell.innerHTML = `<h4><span>${a.title}</span>${METRICS[a.metric].est ? (st.district ? '<span class="badge src-est">ประมาณรายตำบล</span>' : '<span class="badge src-real">รายงานจริง</span>') : ''}</h4><div class="amap" id="amap${i}"></div><div class="legend"><h4>${METRICS[a.metric].label}</h4>${legendClasses(a.sch.classes)}</div>`;
+      cell.innerHTML = `<h4><span>${a.title}</span>${METRICS[a.metric].dist ? (st.district ? '<span class="badge src-est">มีข้อมูลรายอำเภอเท่านั้น</span>' : '<span class="badge src-real">รายงานจริง</span>') : ''}</h4><div class="amap" id="amap${i}"></div><div class="legend"><h4>${METRICS[a.metric].label}</h4>${legendClasses(a.sch.classes)}</div>`;
       host.appendChild(cell);
       const m = L.map('amap' + i, { zoomControl: i === 0, attributionControl: false, zoomSnap: 0.25 });
       L.geoJSON({ type: 'FeatureCollection', features: a.feats }, {
@@ -843,7 +877,7 @@ KPP.Map = (function () {
       g.strokeStyle = '#cbd5e1'; g.lineWidth = 1; g.strokeRect(x, y, cw, ch);
       g.fillStyle = '#0f172a'; g.font = '600 17px Prompt, Tahoma, sans-serif'; g.fillText(a.title, x + 12, y + 26);
       drawStatic(g, x + 1, y + 36, cw - 2, ch - 37, { state: st, features: a.feats.map((f) => ({ geometry: f.geometry, fill: a.by[f.properties.code] ? a.sch.color(a.by[f.properties.code]) : NA, stroke: '#334155', width: 0.8, alpha: 0.95 })), districtLines: false, labelSize: 11 });
-      drawLegendBox(g, x + 10, y + ch - 10, METRICS[a.metric].label, a.sch.classes, { note: METRICS[a.metric].est && st.district ? '* ประมาณรายตำบลจากรายงานรายอำเภอ' : '' });
+      drawLegendBox(g, x + 10, y + ch - 10, METRICS[a.metric].label, a.sch.classes, { note: METRICS[a.metric].dist && st.district ? '* ยังไม่มีผลสำรวจรายตำบล' : '' });
     });
     g.fillStyle = '#64748b'; g.font = '400 12px Prompt, Tahoma, sans-serif';
     g.fillText(`แหล่งข้อมูล: ทะเบียนเกษตรกร ทบก. · รายงานระบาดโรคใบด่าง · ผังแปลงดิจิทัล กสก. · ดัชนี = 50% สัดส่วนระบาด (เต็มที่ 30%) + 30% พันธุ์อ่อนแอ + 20% การขาดพันธุ์ต้านทาน/ทนทาน · จัดทำโดย ${C.DEVELOPER} ${C.DEVELOPER_UNIT}`, 20, H - 14);
