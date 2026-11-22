@@ -2,12 +2,11 @@ KPP.Importer = (function () {
   const U = KPP.U, C = KPP.CONFIG, DA = KPP.Data;
   const FIELD_LABELS = {
     '': '— ไม่ใช้ —', year: 'ปี (พ.ศ.)', district: 'อำเภอ', tambon: 'ตำบล', moo: 'หมู่ที่/หมู่บ้าน', planted: 'พื้นที่ปลูก (ไร่)',
-    harvested: 'พื้นที่เก็บเกี่ยว (ไร่)', production: 'ผลผลิต (ตัน)', cmd: 'พื้นที่ระบาดใบด่าง (ไร่)', rootrot: 'หัวเน่า (ไร่)',
-    mealybug: 'เพลี้ยแป้ง (ไร่)', whitefly: 'แมลงหวี่ขาว (ไร่)', broom: 'พุ่มแจ้ (ไร่)', resist: 'พื้นที่พันธุ์ต้านทาน (ไร่)',
+    harvested: 'พื้นที่เก็บเกี่ยว (ไร่)', production: 'ผลผลิต (ตัน)', cmd: 'พื้นที่ระบาดใบด่าง (ไร่)', resist: 'พื้นที่พันธุ์ต้านทาน+ทนทาน (ไร่)',
     variety: 'ชื่อพันธุ์', clean_stem: 'แปลงพันธุ์สะอาด (ไร่)', name: 'ชื่อจุด/สถานที่', lat: 'Latitude', lng: 'Longitude',
     utm_x: 'UTM Easting (X)', utm_y: 'UTM Northing (Y)', zone: 'โซน UTM'
   };
-  const NUM_FIELDS = ['planted', 'harvested', 'production', 'cmd', 'rootrot', 'mealybug', 'whitefly', 'broom', 'resist', 'clean_stem'];
+  const NUM_FIELDS = ['planted', 'harvested', 'production', 'cmd', 'resist', 'clean_stem'];
   let parsed = null;
 
   const normH = (s) => String(s || '').toLowerCase().replace(/[\s_\-().:]/g, '').replace(/ไร่|ตัน|กก\./g, '');
@@ -206,10 +205,10 @@ KPP.Importer = (function () {
   }
 
   /* ---------- templates ---------- */
-  const TPL_HEAD = ['ปี', 'อำเภอ', 'ตำบล', 'หมู่ที่', 'พื้นที่ปลูก', 'พื้นที่เก็บเกี่ยว', 'ผลผลิต', 'พื้นที่ระบาดใบด่าง', 'หัวเน่า', 'เพลี้ยแป้ง', 'แมลงหวี่ขาว', 'พื้นที่พันธุ์ต้านทาน', 'แปลงพันธุ์สะอาด', 'ชื่อพันธุ์', 'lat', 'lng', 'utm_x', 'utm_y', 'zone'];
+  const TPL_HEAD = ['ปี', 'อำเภอ', 'ตำบล', 'หมู่ที่', 'พื้นที่ปลูก', 'พื้นที่เก็บเกี่ยว', 'ผลผลิต', 'พื้นที่ระบาดใบด่าง', 'พื้นที่พันธุ์ต้านทาน', 'แปลงพันธุ์สะอาด', 'ชื่อพันธุ์', 'lat', 'lng', 'utm_x', 'utm_y', 'zone'];
   const TPL_ROWS = [
-    [2569, 'ปางศิลาทอง', 'ปางตาไว', 5, 320, 300, 960, 12.5, 0, 3, 1, 40, 0, 'พันธุ์ระยอง 72', 16.0631, 99.4523, '', '', ''],
-    [2569, 'เมืองกำแพงเพชร', 'อ่างทอง', 9, 210, 210, 690, 4, 2, 0, 0, 15, 5, 'พันธุ์ KU50', '', '', 546282, 1826491, 47]
+    [2569, 'ปางศิลาทอง', 'ปางตาไว', 5, 320, 300, 960, 12.5, 40, 0, 'อิทธิ 1', 16.0631, 99.4523, '', '', ''],
+    [2569, 'เมืองกำแพงเพชร', 'อ่างทอง', 9, 210, 210, 690, 4, 15, 5, 'เกษตรศาสตร์ 50', '', '', 546282, 1826491, 47]
   ];
   function template(kind) {
     if (kind === 'csv') U.download('แม่แบบ_ผลสำรวจมันสำปะหลัง.csv', '﻿' + Papa.unparse([TPL_HEAD, ...TPL_ROWS]), 'text/csv;charset=utf-8');

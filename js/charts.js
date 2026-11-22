@@ -44,7 +44,7 @@ KPP.Charts = (function () {
   function destroyAll() { Object.keys(charts).forEach((k) => { charts[k].destroy(); delete charts[k]; }); }
   const legendHtml = (items) => items.map(([c, l]) => `<span>${c.startsWith('<') ? c : `<i class="sw" style="background:${c}"></i>`}${l}</span>`).join('');
   const setHtml = (id, h) => { const e = document.getElementById(id); if (e) e.innerHTML = h; };
-  const hBar = (o) => { o.indexAxis = 'y'; o.interaction = { mode: 'index', intersect: false, axis: 'y' }; o.scales.x.ticks.callback = (v) => U.fmtCompact(v); o.scales.y.grid.display = false; return o; };
+  const hBar = (o) => { o.indexAxis = 'y'; o.interaction = { mode: 'index', intersect: false, axis: 'y' }; o.scales.x.ticks.callback = (v) => U.fmtCompact(v); o.scales.x.ticks.maxRotation = 0; o.scales.x.ticks.maxTicksLimit = 6; o.scales.y.grid.display = false; return o; };
   const clickUnit = (S, list) => (e, els) => {
     if (!els.length) return;
     const u = list[els[0].index];
@@ -58,29 +58,49 @@ KPP.Charts = (function () {
   function overview(S) {
     const units = unitsFor(S, 11);
     const P = PAL();
-    setHtml('cmpLegend', legendHtml([[P.planted, 'พื้นที่ปลูก'], [P.green, 'ต้านทาน+ทนทาน'], [P.red, 'ระบาดใบด่าง (จำลอง)']]));
+    setHtml('cmpLegend', legendHtml([[P.planted, 'พื้นที่ปลูก (ทะเบียน)'], [P.green, 'ต้านทาน+ทนทาน'], [P.red, 'ระบาดใบด่าง (รายงาน)']]));
     const o = hBar(baseOpts());
     o.plugins.tooltip.callbacks = { label: (ctx) => ` ${ctx.dataset.label}: ${U.fmt(ctx.raw)} ไร่`, afterBody: (it) => { const u = units[it[0].dataIndex]; return [`ระบาด ${U.pct(u.cmdPct)} · ต้านทาน+ทนทาน ${U.pct(u.resistPct)}`, 'คลิกเพื่อเจาะลึก']; } };
     o.onClick = clickUnit(S, units); o.onHover = pointer;
     const ds = (label, data, color) => ({ label, data, backgroundColor: color, borderRadius: 4, borderSkipped: 'start', barPercentage: 0.86, categoryPercentage: 0.8, borderColor: css('--surface'), borderWidth: { top: 1, bottom: 1 }, minBarLength: 2 });
     make('chCompare', { type: 'bar', data: { labels: units.map((u) => u.name), datasets: [ds('พื้นที่ปลูก', units.map((u) => u.planted), P.planted), ds('ต้านทาน+ทนทาน', units.map((u) => u.resist), P.green), ds('ระบาดใบด่าง', units.map((u) => u.cmd), P.red)] }, options: o });
-    donut(S); varietyClasses(S, 'chVariety', 'varLegend'); trend(S);
+    cmdAge(S, 'chDonut'); varietyClasses(S, 'chVariety', 'varLegend'); trend(S);
   }
 
-  function donut(S) {
-    const a = DA.agg(S.year, { district: S.district, tambon: S.tambon });
-    const cols = ['--s1', '--s2', '--s3', '--s4', '--s5'].map(css);
-    const items = C.DISEASES.map((d, i) => ({ key: d.key, label: d.short, v: a[d.key] || 0, c: cols[i] }));
-    const total = items.reduce((s, x) => s + x.v, 0);
-    const src = a.src.disease === 'IMPORT' ? C.SOURCES.IMPORT : C.SOURCES.SIMULATED;
-    setHtml('donutSrc', src.label);
-    const b = document.getElementById('donutSrc'); if (b) { b.className = 'badge ' + src.cls; b.title = src.note; }
-    setHtml('donutCenter', `<div><b>${U.fmtCompact(total)}</b>ไร่</div>`);
-    setHtml('donutLegend', items.map((x) => `<li><i class="sw" style="background:${x.c}"></i>${x.label}<b>${U.fmt(x.v)} <small>(${U.pct(U.safeDiv(x.v, total), 0)})</small></b></li>`).join(''));
-    const o = baseOpts(); delete o.scales; o.cutout = '66%';
-    o.plugins.tooltip.callbacks = { label: (ctx) => ` ${ctx.label}: ${U.fmt(ctx.raw)} ไร่ (${U.pct(U.safeDiv(ctx.raw, total))})` };
-    o.onClick = (e, els) => { if (els.length) KPP.App.setDisease(items[els[0].index].key); };
-    make('chDonut', { type: 'doughnut', data: { labels: items.map((x) => x.label), datasets: [{ data: items.map((x) => x.v), backgroundColor: items.map((x) => x.c), borderColor: css('--surface'), borderWidth: 2, hoverOffset: 4, offset: items.map((x) => (S.disease === x.key ? 8 : 0)) }] }, options: o });
+  const AGES = [['lt3', '< 3 เดือน'], ['m3_5', '3–5 เดือน'], ['m6_8', '6–8 เดือน'], ['gt8', '> 8 เดือน']];
+  const AGECOL = ['#fdd49e', '#fc8d59', '#d7301f', '#7f0000'];
+  /** พื้นที่ระบาดใบด่างตามอายุพืช (รายงานจริง) ของจังหวัด/อำเภอที่เลือก */
+  function cmdAge(S, id) {
+    const rep = DA.D.rep.cmd;
+    if (!rep) return;
+    const r = S.district ? rep.districts[S.district] : rep.province;
+    if (!r) return;
+    setHtml('ageSub', (S.district ? 'อ.' + DA.D.dByCode[S.district].name : 'ทั้งจังหวัด') + ' · ' + rep.period.replace(/วัน\S+ที่ /g, ''));
+    setHtml('ageLegend', legendHtml([[AGECOL[2], 'พื้นที่ระบาด'], ['#cbd5e1', 'พื้นที่ยืนต้นไม่พบการระบาด']]));
+    const o = hBar(baseOpts());
+    o.scales.x.stacked = true; o.scales.y.stacked = true;
+    o.plugins.tooltip.callbacks = {
+      label: (ctx) => ` ${ctx.dataset.label}: ${U.fmt(ctx.raw)} ไร่`,
+      afterBody: (it) => { const k = AGES[it[0].dataIndex][0]; return [`ระบาด ${U.pct(U.safeDiv(r.now[k].rai, r.standing[k].rai))} ของพื้นที่ยืนต้นช่วงอายุนี้`, `เกษตรกรได้รับผลกระทบ ${U.fmt(r.now[k].farmers)} ราย`]; }
+    };
+    make(id, { type: 'bar', data: { labels: AGES.map((x) => x[1]), datasets: [
+      { label: 'พื้นที่ระบาด', data: AGES.map((x) => r.now[x[0]].rai), backgroundColor: AGECOL[2], borderColor: css('--surface'), borderWidth: { right: 2 }, barPercentage: 0.72 },
+      { label: 'ยืนต้นไม่พบการระบาด', data: AGES.map((x) => Math.max(0, r.standing[x[0]].rai - r.now[x[0]].rai)), backgroundColor: dark() ? '#334766' : '#cbd5e1', barPercentage: 0.72 }
+    ] }, options: o });
+  }
+
+  /** พื้นที่ระบาดรายอำเภอ แยกช่วงอายุพืช (รายงานจริง) */
+  function cmdAgeStack(S) {
+    const rep = DA.D.rep.cmd;
+    if (!rep) return;
+    const rows = Object.entries(rep.districts).map(([c, r]) => ({ code: c, name: DA.D.dByCode[c].name, r })).filter((x) => x.r.standing.total.rai > 0)
+      .sort((a, b) => b.r.now.total.rai - a.r.now.total.rai);
+    setHtml('ageStackLegend', legendHtml(AGES.map((x, i) => [AGECOL[i], 'อายุ ' + x[1]])));
+    const o = hBar(baseOpts());
+    o.scales.x.stacked = true; o.scales.y.stacked = true;
+    o.plugins.tooltip.callbacks = { label: (ctx) => ` ${ctx.dataset.label}: ${U.fmt(ctx.raw)} ไร่`, footer: (it) => { const x = rows[it[0].dataIndex].r; return `รวม ${U.fmt(x.now.total.rai)} ไร่ (${U.pct(U.safeDiv(x.now.total.rai, x.standing.total.rai))} ของพื้นที่ยืนต้น) · ${U.fmt(x.now.total.farmers)} ราย`; } };
+    o.onClick = (e, els) => { if (els.length) KPP.App.selectDistrict(rows[els[0].index].code); }; o.onHover = pointer;
+    make('chAgeStack', { type: 'bar', data: { labels: rows.map((x) => (S.district === x.code ? '▶ ' : '') + x.name), datasets: AGES.map((a, i) => ({ label: 'อายุ ' + a[1], data: rows.map((x) => x.r.now[a[0]].rai), backgroundColor: AGECOL[i], borderColor: css('--surface'), borderWidth: { right: 2 }, barPercentage: 0.78 })) }, options: o });
   }
 
   /** สัดส่วน 4 กลุ่มพันธุ์ของพื้นที่ที่เลือก (แท่งพันธุ์ เรียงตามพื้นที่ สีตามกลุ่ม) */
@@ -113,9 +133,13 @@ KPP.Charts = (function () {
     o1.scales.y.ticks.callback = (v) => U.fmt(v); o1.scales.x.grid.display = false;
     make('chTrendYield', { type: 'line', data: { labels, datasets: [line(t.map((x) => x.yield), css('--brand'), 'ผลผลิตเฉลี่ย')] }, options: o1 });
     const o2 = baseOpts(); o2.interaction = { mode: 'index', intersect: false };
-    o2.plugins.tooltip.callbacks = { label: (ctx) => ` ${U.fmt(ctx.raw, 2)}% ของพื้นที่ปลูก (${U.fmt(t[ctx.dataIndex].cmd)} ไร่)` };
-    o2.scales.y.ticks.callback = (v) => U.fmt(v, 1) + '%'; o2.scales.y.beginAtZero = true; o2.scales.x.grid.display = false;
-    make('chTrendCmd', { type: 'line', data: { labels, datasets: [line(t.map((x) => (U.isNum(x.cmdPct) ? x.cmdPct * 100 : null)), PAL().red, 'สัดส่วนระบาด')] }, options: o2 });
+    o2.plugins.tooltip.callbacks = { label: (ctx) => ` ${U.fmt(ctx.raw)} ไร่`, afterLabel: (ctx) => `แหล่ง: ${(C.SOURCES[t[ctx.dataIndex].src.area] || {}).label || '–'}` };
+    o2.scales.y.ticks.callback = (v) => U.fmtCompact(v); o2.scales.y.beginAtZero = true; o2.scales.x.grid.display = false;
+    const isReg = (x) => x.src.area === 'ESTIMATE' || x.src.area === 'REGISTRY' || x.src.area === 'PARCEL';
+    const l2 = line(t.map((x) => x.planted), PAL().planted, 'พื้นที่ปลูก');
+    l2.pointBackgroundColor = t.map((x) => (isReg(x) ? css('--surface') : PAL().planted));
+    l2.segment = { borderDash: (ctx) => (isReg(t[ctx.p1DataIndex]) ? [5, 4] : undefined) };
+    make('chTrendCmd', { type: 'line', data: { labels, datasets: [l2] }, options: o2 });
   }
 
   /* ================= CMD management ================= */
@@ -123,14 +147,15 @@ KPP.Charts = (function () {
     const units = unitsFor(S, S.district ? 16 : 11);
     const P = PAL();
     const pct = mode === 'pct';
-    setHtml('cmdLegend', legendHtml([...(pct ? [] : [[P.planted, 'พื้นที่ปลูกทั้งหมด']]), [P.green, 'พันธุ์ต้านทาน'], [hatchSw(P.green), 'พันธุ์ทนทาน'], [P.red, 'พื้นที่ระบาดใบด่าง (จำลอง)']]));
-    const val = (u, k) => (pct ? (U.isNum(u[k]) && u.planted ? (u[k] / u.planted) * 100 : null) : u[k]);
+    setHtml('cmdLegend', legendHtml([...(pct ? [] : [[P.planted, 'พื้นที่ยืนต้น']]), [P.green, 'พันธุ์ต้านทาน'], [hatchSw(P.green), 'พันธุ์ทนทาน'], [P.red, 'พื้นที่ระบาดใบด่าง']]));
+    units.forEach((u) => { u.base = u.standing || u.planted; });
+    const val = (u, k) => (pct ? (U.isNum(u[k]) && u.base ? (u[k] / (k === 'cmd' ? u.base : u.planted)) * 100 : null) : u[k]);
     const ds = (label, key, color, border) => ({ label, data: units.map((u) => val(u, key)), backgroundColor: color, borderColor: border || css('--surface'), borderWidth: border ? 1.2 : { top: 1, bottom: 1 }, borderRadius: 4, borderSkipped: 'start', barPercentage: 0.9, categoryPercentage: 0.82, minBarLength: 2 });
     const sets = [];
-    if (!pct) sets.push(ds('พื้นที่ปลูกทั้งหมด', 'planted', P.planted));
+    if (!pct) sets.push(ds('พื้นที่ยืนต้น', 'base', P.planted));
     sets.push(ds('พันธุ์ต้านทาน', 'resistant', P.green), ds('พันธุ์ทนทาน', 'tolerant', hatch(P.green), P.green), ds('พื้นที่ระบาดใบด่าง', 'cmd', P.red));
     const o = hBar(baseOpts());
-    if (pct) o.scales.x.ticks.callback = (v) => U.fmt(v, 1) + '%';
+    if (pct) o.scales.x.ticks.callback = (v) => U.fmt(v, 0) + '%';
     o.plugins.tooltip.callbacks = {
       label: (ctx) => ` ${ctx.dataset.label}: ${pct ? U.fmt(ctx.raw, 2) + '%' : U.fmt(ctx.raw) + ' ไร่'}`,
       afterBody: (it) => { const u = units[it[0].dataIndex]; return [`ดัชนีการจัดการ ${u.cmdIndex ?? '–'} (${u.cmdLevel.label})`, 'คลิกเพื่อเจาะลึก']; }
@@ -186,5 +211,5 @@ KPP.Charts = (function () {
 
   const images = () => Object.fromEntries(Object.entries(charts).map(([k, c]) => [k, c.toBase64Image('image/png', 1)]));
 
-  return { overview, cmdCompare, cmdVarietyStack, rrFactors, soilCharts, varietyClasses, destroyAll, images, charts, legendHtml, hatchSw, PAL };
+  return { overview, cmdAge, cmdAgeStack, cmdCompare, cmdVarietyStack, rrFactors, soilCharts, varietyClasses, destroyAll, images, charts, legendHtml, hatchSw, PAL };
 })();

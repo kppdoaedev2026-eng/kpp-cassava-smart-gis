@@ -63,11 +63,11 @@ KPP.Exporter = (function () {
       host.innerHTML = `<div class="report" id="rep">
         <div style="display:flex;gap:12px;align-items:center;margin-bottom:6px"><img src="assets/img/logo-doae.png" style="width:56px;border:0"><img src="assets/img/seal-kpp.png" style="width:56px;border:0">
           <div><h1>รายงานสรุปสถานการณ์มันสำปะหลัง ${U.esc(scopeName(S))} ปีเพาะปลูก ${S.year}</h1>
-          <div class="r-sub" style="margin:0">${U.esc(C.TITLE)} · จัดทำเมื่อ ${U.thaiDate()} · ${U.esc(C.DEVELOPER)}</div></div></div>
+          <div class="r-sub" style="margin:0">${U.esc(C.TITLE)} · จัดทำเมื่อ ${U.thaiDate()}<br>จัดทำโดย ${U.esc(C.DEVELOPER)} ${U.esc(C.DEVELOPER_TITLE)} ${U.esc(C.DEVELOPER_UNIT)}</div></div></div>
         <div class="r-kpis">
-          <div class="r-kpi"><span>พื้นที่ปลูก (ไร่)</span><b>${U.fmt(a.planted)}</b><span>${yo.comparable && U.isNum(yo.value) ? 'YoY ' + (yo.value >= 0 ? '+' : '') + U.pct(yo.value) : 'YoY: ต่างแหล่งข้อมูล'}</span></div>
+          <div class="r-kpi"><span>พื้นที่ปลูกขึ้นทะเบียน (ไร่)</span><b>${U.fmt(a.planted)}</b><span>${yo.comparable && U.isNum(yo.value) ? 'YoY ' + (yo.value >= 0 ? '+' : '') + U.pct(yo.value) : 'YoY: ต่างแหล่งข้อมูล'}</span></div>
           <div class="r-kpi"><span>ผลผลิต (ตัน)</span><b>${U.fmt(a.production)}</b><span>${U.fmt(a.yield)} กก./ไร่</span></div>
-          <div class="r-kpi" style="border-left-color:#b2182b"><span>ระบาดใบด่าง (ไร่) *</span><b>${U.fmt(a.cmd)}</b><span>${U.pct(a.cmdPct)} · ดัชนีจัดการ ${a.cmdIndex ?? '–'} (${a.cmdLevel.label})</span></div>
+          <div class="r-kpi" style="border-left-color:#b2182b"><span>ระบาดใบด่าง (ไร่) ${U.esc(DA.D.rep.cmd ? DA.D.rep.cmd.period.replace(/วัน\S+ที่ /g, '') : '')}</span><b>${U.fmt(a.cmd)}</b><span>${U.pct(a.cmdPct)} ของพื้นที่ยืนต้น · ดัชนี ${a.cmdIndex ?? '–'} (${a.cmdLevel.label})</span></div>
           <div class="r-kpi" style="border-left-color:#1a7f37"><span>ต้านทาน + ทนทาน (ไร่)</span><b>${U.fmt(a.resist)}</b><span>${U.pct(a.resistPct)} · ต้านทาน ${U.fmt(a.resistant)} · ทนทาน ${U.fmt(a.tolerant)}</span></div>
           <div class="r-kpi" style="border-left-color:#1d4ed8"><span>ทับซ้อนน้ำท่วมซ้ำซาก (ไร่)</span><b>${U.fmt(a.flood)}</b><span>รากเน่าโคนเน่า: ดัชนี ${a.rrIndex ?? '–'} (${a.rrLevel.label})</span></div>
         </div>
@@ -76,7 +76,7 @@ KPP.Exporter = (function () {
         <h2>ชุดแผนที่วิเคราะห์พื้นที่การจัดการโรคใบด่างมันสำปะหลัง</h2>
         <img src="${atlasCanvas.toDataURL('image/jpeg', 0.9)}" alt="ชุดแผนที่">
         <h2>ตารางการจัดการโรคใบด่างราย${uw}</h2>
-        ${tbl([uw, 'ปลูก', 'ระบาด*', '% ระบาด', 'ต้านทาน', 'ทนทาน', 'ค่อนข้างอ่อนแอ', 'อ่อนแอ', 'ดัชนี', 'ระดับ'], cm.map((r) => [U.esc(r.name), U.fmt(r.planted), U.fmt(r.cmd), U.pct(r.cmdPct), U.fmt(r.resistant), U.fmt(r.tolerant), U.fmt(r.modsus), U.fmt(r.susceptible), r.cmdIndex ?? '–', r.cmdLevel.icon + ' ' + r.cmdLevel.label]))}
+        ${tbl([uw, 'ยืนต้น', 'ระบาด', '% ระบาด', 'ต้านทาน', 'ทนทาน', 'ค่อนข้างอ่อนแอ', 'อ่อนแอ', 'ดัชนี', 'ระดับ'], cm.map((r) => [U.esc(r.name), U.fmt(r.standing ?? r.planted), U.fmt(r.cmd), U.pct(r.cmdPct), U.fmt(r.resistant), U.fmt(r.tolerant), U.fmt(r.modsus), U.fmt(r.susceptible), r.cmdIndex ?? '–', r.cmdLevel.icon + ' ' + r.cmdLevel.label]))}
         <h2>ตารางวิเคราะห์ความเสี่ยงรวมและข้อเสนอแนะ</h2>
         ${tbl([uw, 'พื้นที่ปลูก', 'ใบด่าง*', 'ต้านทาน+ทนทาน', 'ทับซ้อนน้ำท่วม', 'ศจช. ใกล้สุด (กม.)', 'คะแนน', 'ระดับ'], rm.map((r) => [U.esc(r.name), U.fmt(r.planted), U.pct(r.cmdPct), U.pct(r.resistPct), U.fmt(r.flood), r.nearestPest ? U.fmt(r.nearestPest.km, 1) : '–', r.score ?? '–', r.level.icon + ' ' + r.level.label]))}
         <ul>${rm.slice(0, 5).map((r) => `<li><b>${uw}${U.esc(r.name)}</b> (${r.level.label}): ${r.actions.map(U.esc).join(' · ')}</li>`).join('')}</ul>
@@ -85,7 +85,7 @@ KPP.Exporter = (function () {
         <h2>ความเหมาะสมของที่ดินสำหรับมันสำปะหลัง (กรมพัฒนาที่ดิน)</h2>
         ${tbl(['อำเภอ', 'ศักยภาพ S1', 'S2', 'S3', 'N', 'ปลูกบน S1+S2', 'ปลูกบน S3+N', 'คงเหลือ S1+S2'], t7.map((r) => [U.esc(r.district), U.fmt(r.potential.S1), U.fmt(r.potential.S2), U.fmt(r.potential.S3), U.fmt(r.potential.N), U.fmt(r.planted.S1 + r.planted.S2), U.fmt(r.planted.S3 + r.planted.N), U.fmt(r.remaining.S1 + r.remaining.S2)]))}
         <div class="r-note">แหล่งข้อมูล: ${U.esc(C.SOURCES.OFFICIAL.note)} · ${U.esc(DA.D.P.source)} · ${U.esc(C.SOURCES.LDD.note)} · ${U.esc(C.SOURCES.FLOOD.note)} · ${U.esc(C.SOURCES.NETWORK.note)}<br>
-        * ข้อมูลโรคพืชเป็น${a.src.disease === 'IMPORT' ? 'ข้อมูลที่นำเข้าโดยผู้ใช้' : 'ข้อมูลจำลองเพื่อสาธิต (ยังไม่มีผลสำรวจในระบบ)'} · ผลผลิตเฉลี่ย = ผลผลิตรวม ÷ เนื้อที่เก็บเกี่ยว × 1,000 · กลุ่มพันธุ์: ต้านทาน/ทนทาน/ค่อนข้างอ่อนแอ/อ่อนแอ ตามการตั้งค่าในระบบ</div>
+        * พื้นที่ระบาดใบด่าง: ${U.esc(C.SOURCES.REPORT.note)} ${U.esc(DA.D.rep.cmd ? DA.D.rep.cmd.period : '')} (รายตำบลเป็นค่าประมาณ) · พื้นที่ปลูก 2569: ${U.esc(C.SOURCES.REGISTRY.note)} · ผลผลิตเฉลี่ย = ผลผลิตรวม ÷ เนื้อที่เก็บเกี่ยว × 1,000 · กลุ่มพันธุ์: ต้านทาน/ทนทาน/ค่อนข้างอ่อนแอ/อ่อนแอ ตามการตั้งค่าในระบบ</div>
       </div>`;
       await Promise.all([...host.querySelectorAll('img')].map((im) => (im.complete ? 0 : new Promise((r) => { im.onload = im.onerror = r; }))));
       const canvas = await html2canvas(host.firstElementChild, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
@@ -129,7 +129,7 @@ KPP.Exporter = (function () {
     if (window.KPP_LDD) add(window.KPP_LDD.table7.rows.map((r) => ({ 'อำเภอ': r.district, 'ศักยภาพ S1': r.potential.S1, 'ศักยภาพ S2': r.potential.S2, 'ศักยภาพ S3': r.potential.S3, 'ศักยภาพ N': r.potential.N, 'ปลูก S1': r.planted.S1, 'ปลูก S2': r.planted.S2, 'ปลูก S3': r.planted.S3, 'ปลูก N': r.planted.N, 'คงเหลือ S1': r.remaining.S1, 'คงเหลือ S2': r.remaining.S2 })), 'LDD ความเหมาะสมดิน');
     add(DA.trend({}).map((x) => ({ 'ปี': x.year, 'พื้นที่ปลูก': r0(x.planted), 'ผลผลิต (ตัน)': r0(x.production), 'ผลผลิตเฉลี่ย': r0(x.yield), '% ระบาดใบด่าง*': r4(x.cmdPct), 'แหล่งข้อมูล': srcL(x.src.area) })), 'แนวโน้ม 5 ปี');
     add([['กลุ่มพันธุ์', 'พันธุ์'], ...C.VARIETY_CLASSES.map((v) => [v.label, DA.allVarieties().filter((n) => DA.varietyClass(n) === v.key).join(', ')])], 'กลุ่มพันธุ์');
-    add([['แหล่งข้อมูล', 'คำอธิบาย'], ...Object.values(C.SOURCES).map((s) => [s.label, s.note]), ['สูตร', 'ผลผลิตเฉลี่ย (กก./ไร่) = ผลผลิตรวม (ตัน) ÷ เนื้อที่เก็บเกี่ยว (ไร่) × 1,000'], ['ผู้พัฒนา', C.DEVELOPER + ' ' + C.DEVELOPER_UNIT]], 'แหล่งข้อมูล');
+    add([['แหล่งข้อมูล', 'คำอธิบาย'], ...Object.values(C.SOURCES).map((s) => [s.label, s.note]), ['สูตร', 'ผลผลิตเฉลี่ย (กก./ไร่) = ผลผลิตรวม (ตัน) ÷ เนื้อที่เก็บเกี่ยว (ไร่) × 1,000'], ['ผู้พัฒนา', C.DEVELOPER + ' ' + C.DEVELOPER_TITLE + ' ' + C.DEVELOPER_UNIT]], 'แหล่งข้อมูล');
     XLSX.writeFile(wb, `สรุปมันสำปะหลังกำแพงเพชร_${S.year}_${stamp()}.xlsx`);
   }
 
