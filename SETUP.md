@@ -43,7 +43,7 @@ python -m http.server 8765         # แล้วเปิด http://localhost:8
 | รายงานใบด่างรอบใหม่ (ทุก 2 สัปดาห์/เดือน) | วางไฟล์ในโฟลเดอร์ `รายงานใบด่าง/` แล้วดับเบิลคลิก `อัปเดตรายงานใบด่าง.bat` |
 | ทะเบียนเกษตรกร / แปลงส่งเสริมพันธุ์ใหม่ | วางไฟล์ทับของเดิม แล้ว `python tools/build_reports.py` |
 | การแจกพันธุ์ใหม่ | เพิ่มแถวใน `สนับสนุนพันธุ์มัน/ทะเบียนการสนับสนุนพันธุ์.csv` (ไม่ใส่ชื่อ/เบอร์) หรือวางไฟล์รายชื่อรับท่อนพันธุ์ แล้ว `python tools/build_reports.py` |
-| CassavaPlot Monitor | ดึงสดอัตโนมัติ (ต้องติดตั้ง `tools/apps_script_public_api.gs` ครั้งแรก) |
+| CassavaPlot Monitor | ดึงสดอัตโนมัติผ่าน doPost ของระบบ (ไม่ต้องติดตั้งเพิ่ม) · ตรวจด้วย `python tools/check_plotmonitor.py` |
 | ผังแปลงดิจิทัลฉบับใหม่ / รายงานภัยพิบัติ | วางไฟล์ `.xlsx` ใหม่ในโฟลเดอร์นี้ แล้ว `python tools/build_data.py --private` |
 | แผนที่ดิน LDD (นานๆ ครั้ง) | `python tools/build_ldd_soil.py` (ดาวน์โหลด PDF เองถ้าไม่มี) |
 | เผยแพร่ | `git add -A` → ตรวจ `git status` → `git commit` → `git push` (เว็บอัปเดตใน 1–2 นาที) |

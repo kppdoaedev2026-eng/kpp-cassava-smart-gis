@@ -234,7 +234,7 @@ KPP.App = (function () {
     const pm = DA.D.rep.plot_monitor;
     const link = `<a href="${U.esc(C.PLOT_MONITOR_URL)}" target="_blank" rel="noopener">เปิดระบบ CassavaPlot Monitor ↗</a>`;
     if (!pm) {
-      return card2('ระบบติดตามแปลงส่งเสริม CassavaPlot Monitor', srcBadge('PLOTMON'), `<p class="hint">ยังเชื่อมต่อข้อมูลไม่ได้ — ต้องเพิ่มช่องทางข้อมูลสาธารณะ (?api=public) ใน Apps Script ตามไฟล์ tools/apps_script_public_api.gs แล้ว Deploy เวอร์ชันใหม่ จากนั้นระบบจะดึงข้อมูลล่าสุดอัตโนมัติทุกครั้งที่เปิดหน้าเว็บ</p><p class="hint">${link}</p>`);
+      return card2('ระบบติดตามแปลงส่งเสริม CassavaPlot Monitor', srcBadge('PLOTMON'), `<p class="hint">ยังเชื่อมต่อข้อมูลไม่ได้${pmState === 'failed' || pmState === 'skipped' ? ' (ลองแล้วไม่สำเร็จ)' : ''} — ระบบเรียก api_publicDashboard ผ่าน doPost ของ CassavaPlot Monitor ตรวจได้ด้วย python tools/check_plotmonitor.py</p><p class="hint"><button class="btn sm" data-pm-retry>🔄 ลองเชื่อมต่ออีกครั้ง</button> ${link}</p>`);
     }
     const s = pm.summary || {};
     const dn = state.district ? DA.D.dByCode[state.district].name : null;
@@ -283,15 +283,26 @@ KPP.App = (function () {
       + supportHtml() + plotMonitorHtml();
   }
 
-  /* ข้อมูลสดจาก CassavaPlot Monitor: ดึงทุกครั้งที่เปิดหน้า ถ้าไม่สำเร็จใช้ข้อมูลรอบล่าสุดใน data/reports.js */
-  function loadPlotMonitor() {
+  /* ข้อมูลสดจาก CassavaPlot Monitor: ดึงเมื่อเปิดหน้า ถ้าไม่สำเร็จใช้ข้อมูลรอบล่าสุดใน data/reports.js
+     ถ้าล้มเหลว (ยังไม่ได้ Deploy ช่องทาง ?api=public) จะเว้น 6 ชั่วโมงก่อนลองใหม่ในเบราว์เซอร์เดิม เพื่อไม่ให้เรียกซ้ำทุกครั้ง */
+  const PM_FAIL_KEY = 'kpp.plotmon.fail', PM_RETRY_MS = 6 * 3600 * 1000;
+  let pmState = 'idle';
+  function loadPlotMonitor(force) {
     if (!C.PLOT_MONITOR_URL || !window.fetch) return;
+    const last = +(U.store(PM_FAIL_KEY) || 0);
+    if (!force && last && Date.now() - last < PM_RETRY_MS) { pmState = 'skipped'; return; }
+    pmState = 'loading';
     const ctl = window.AbortController ? new AbortController() : null;
     const tm = setTimeout(() => { if (ctl) ctl.abort(); }, 15000);
-    fetch(C.PLOT_MONITOR_URL + '?api=public', { signal: ctl ? ctl.signal : undefined })
+    // doPost ของ CassavaPlot: api_publicDashboard เรียกได้โดยไม่ต้องล็อกอิน · Content-Type text/plain = simple request (ไม่มี CORS preflight)
+    fetch(C.PLOT_MONITOR_URL, { method: 'POST', body: JSON.stringify({ fn: 'api_publicDashboard', args: { year: '' } }), signal: ctl ? ctl.signal : undefined })
       .then((r) => r.json())
-      .then((d) => { if (d && d.ok) { d.live = true; DA.D.rep.plot_monitor = d; update(); } })
-      .catch(() => { /* ยังไม่ได้ติดตั้ง ?api=public หรือออฟไลน์ */ })
+      .then((d) => {
+        if (!d || !d.ok) throw new Error((d && d.error) || 'ไม่สำเร็จ');
+        d.live = true; DA.D.rep.plot_monitor = d; pmState = 'live'; U.store(PM_FAIL_KEY, 0); update();
+        if (force) U.toast('เชื่อมต่อ CassavaPlot Monitor สำเร็จ', 'ok');
+      })
+      .catch(() => { pmState = 'failed'; U.store(PM_FAIL_KEY, Date.now()); if (force) { U.toast('ยังดึงข้อมูล CassavaPlot ไม่ได้ — ช่องทาง ?api=public ยังไม่ได้ Deploy เวอร์ชันใหม่', 'err', 6000); renderSide(); } })
       .finally(() => clearTimeout(tm));
   }
 
@@ -897,6 +908,7 @@ KPP.App = (function () {
     });
     $('sideTabs').addEventListener('click', (e) => { const b = e.target.closest('.tab'); if (b) showTab(b.dataset.tab); });
     $('sideBody').addEventListener('click', (e) => {
+      if (e.target.closest('[data-pm-retry]')) { loadPlotMonitor(true); return; }
       const seg = e.target.closest('#cmdSeg button');
       if (seg) { state.cmdMode = seg.dataset.mode; document.querySelectorAll('#cmdSeg button').forEach((x) => x.classList.toggle('on', x === seg)); CH.cmdCompare(state, state.cmdMode); return; }
       const chip = e.target.closest('.chip[data-code], .plan-row[data-code]');

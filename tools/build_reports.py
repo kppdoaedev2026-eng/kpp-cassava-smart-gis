@@ -6,7 +6,7 @@
   4) การสนับสนุนท่อนพันธุ์ (ทะเบียนการสนับสนุนพันธุ์.csv + รายชื่อรับท่อนพันธุ์อิทธิ) -> รวมรายโครงการ/ตำบล ไม่เก็บชื่อ/เบอร์โทร
   5) สรุปสาธารณะจาก CassavaPlot Monitor (Apps Script ?api=public) -> ถ้าดึงไม่ได้ใช้ข้อมูลรอบก่อน
 python tools/build_reports.py"""
-import glob, json, os, re
+import glob, json, os, re, sys
 import openpyxl
 import pandas as pd
 
@@ -248,7 +248,10 @@ except Exception:
 if m:
     import urllib.request
     try:
-        with urllib.request.urlopen(m.group(1) + '?api=public', timeout=60) as resp:
+        # doPost ของ CassavaPlot เรียก api_publicDashboard ได้โดยไม่ต้องล็อกอิน (อยู่ใน PUBLIC_FNS) — ข้อมูลสรุป ไม่มีข้อมูลบุคคล
+        req = urllib.request.Request(m.group(1), data=json.dumps({'fn': 'api_publicDashboard', 'args': {'year': ''}}).encode('utf-8'),
+                                     headers={'Content-Type': 'text/plain;charset=utf-8'}, method='POST')
+        with urllib.request.urlopen(req, timeout=120) as resp:
             body = resp.read().decode('utf-8')
         data = json.loads(body)
         if data.get('ok'):
@@ -259,7 +262,15 @@ if m:
         else:
             print('   [5] CassavaPlot ตอบกลับไม่สำเร็จ:', data.get('error'), '— ใช้ข้อมูลเดิม')
     except Exception as e:
-        print('   [5] ดึงข้อมูล CassavaPlot ไม่ได้ (ต้องติดตั้ง tools/apps_script_public_api.gs ก่อน):', str(e)[:80], '— ใช้ข้อมูลเดิม' if plot_monitor else '')
+        print('   [5] ดึงข้อมูล CassavaPlot ไม่ได้ — ใช้ข้อมูลเดิม' if plot_monitor else '   [5] ดึงข้อมูล CassavaPlot ไม่ได้')
+        try:
+            sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+            from check_plotmonitor import diagnose
+            print('      ' + diagnose(m.group(1))[1].replace(chr(10), chr(10) + '      '))
+        except Exception:
+            print('      รัน python tools/check_plotmonitor.py เพื่อดูสาเหตุ')
+    if plot_monitor is not None:
+        plot_monitor.pop('live', None)
 
 with open(OUT, 'w', encoding='utf-8') as fo:
     fo.write('window.KPP_REPORTS=')
