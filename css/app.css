@@ -498,17 +498,18 @@ table.risk tr.warn-row td { background: rgba(250,178,25,.10); }
 .legend-inline { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: .78rem; color: var(--text-2); margin-bottom: 6px; }
 .legend-inline .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
 
-/* ---------- v4.6: จัดสัดส่วนเต็มพื้นที่ ไม่มีช่องว่าง (masonry ด้วย CSS columns) ---------- */
-.side-body { display: block; column-width: 520px; column-gap: 14px; padding: 14px; }
-.side-body > * { break-inside: avoid; margin: 0 0 14px; width: 100%; }
-.side-body > .summary, .side-body > .card:has(.table-wrap), .side-body > .card:has(.plan), .side-body > .chart-legend, .side-body > .ins { column-span: all; }
-.side-body > .card:has(.table-wrap) { break-inside: auto; }
+/* ---------- v4.6: จัดสัดส่วนเต็มพื้นที่ ไม่มีช่องว่าง (grid ยืดการ์ดเต็มแถว) ---------- */
+.side-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); grid-auto-flow: row dense; gap: 14px; padding: 14px; align-items: stretch; }
+.side-body > * { margin: 0; min-width: 0; }
+.side-body > .card { display: flex; flex-direction: column; }
+.side-body > .card .chart-box { flex: 1 1 auto; }
+.side-body > .summary, .side-body > .card:has(.table-wrap), .side-body > .card:has(.plan), .side-body > .chart-legend, .side-body > .ins { grid-column: 1 / -1; }
 .summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: stretch; }
 .summary .sum-head { grid-column: 1 / -1; padding: 10px 14px; border-radius: 10px; background: linear-gradient(100deg, var(--brand-tint), transparent); border: 1px solid var(--border); }
 .sum-sec { display: flex; flex-direction: column; height: 100%; }
 .sum-sec ul { flex: 1; }
 @media (max-width: 1200px) { .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .sum-sec:last-of-type { grid-column: 1 / -1; } }
-@media (max-width: 720px) { .summary { grid-template-columns: 1fr; } .side-body { column-width: auto; column-count: 1; } }
+@media (max-width: 720px) { .summary { grid-template-columns: 1fr; } }
 .goal-grid { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
 .kpis { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
 .chart-box { min-height: 220px; }
