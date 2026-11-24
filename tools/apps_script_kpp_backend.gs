@@ -47,10 +47,11 @@ function setup() {
   Logger.log('รหัสแอดมินเริ่มต้น (เปลี่ยนทันทีด้วย setAdminPin): ' + pin);
 }
 function setAdminPin(pin) { setPin_('admin', pin); }
-function addStaff(code, name, pin) {
+/** เพิ่มเจ้าหน้าที่ — districts = รหัสอำเภอที่รับผิดชอบคั่นด้วยจุลภาค เช่น '6201,6204' (ว่าง = ไม่เห็นพิกัดแปลง) */
+function addStaff(code, name, pin, districts) {
   if (!code || !pin || pin.length < 6) throw new Error('รหัสผ่านอย่างน้อย 6 ตัว');
   var salt = Utilities.getUuid();
-  sh_('staff').appendRow([code, name, 'staff', true, hash_(pin, salt), salt, '']);
+  sh_('staff').appendRow([code, name, 'staff', true, hash_(pin, salt), salt, '', districts || '']);
 }
 function setPin_(code, pin) {
   if (!pin || pin.length < 8) throw new Error('รหัสผ่านอย่างน้อย 8 ตัว');
@@ -99,6 +100,17 @@ function handle_(b) {
   if (a === 'ping') return { ok: true, api: 'kpp-backend', version: 1 };
   if (a === 'public_settings') return { ok: true, settings: publicSettings_() };
   if (a === 'login') return login_(b);
+  if (a === 'import_rows') {                   // นำเข้าชุดข้อมูลรายปีด้วยคีย์ชั่วคราว (ตั้งด้วย PropertiesService 'IMPORT_KEY' แล้วลบด้วย clearImportKey() เมื่อเสร็จ)
+    var ik = props_().getProperty('IMPORT_KEY');
+    if (!ik || b.importKey !== ik) return { ok: false, error: 'คีย์นำเข้าไม่ถูกต้องหรือปิดแล้ว', code: 403 };
+    var nm = 'parcels_' + String(b.year).replace(/\D/g, ''), sp = ss_().getSheetByName(nm);
+    if (!sp) { sp = ss_().insertSheet(nm); sp.getRange('A:N').setNumberFormat('@'); sp.appendRow(SHEETS.parcels_private); sp.setFrozenRows(1); }
+    if (b.reset) { sp.clearContents(); sp.appendRow(SHEETS.parcels_private); }
+    var ir = b.rows || [];
+    if (ir.length) sp.getRange(sp.getLastRow() + 1, 1, ir.length, 14).setValues(ir);
+    audit_('import', 'import_rows', nm + ' n=' + ir.length + ' total=' + (sp.getLastRow() - 1));
+    return { ok: true, sheet: nm, imported: ir.length, total: sp.getLastRow() - 1 };
+  }
   var u = auth_(b.token);
   if (!u) return { ok: false, error: 'ต้องเข้าสู่ระบบ', code: 401 };
   if (a === 'logout') return logout_(b);
@@ -119,14 +131,35 @@ function handle_(b) {
     audit_(u.code, 'set_settings', changed.join(', '));
     return { ok: true, settings: settings_() };
   }
-  if (a === 'parcels') {                       // พิกัด/ผังแปลง — เฉพาะแอดมิน และเจ้าหน้าที่ถ้าแอดมินอนุญาต
-    if (!isAdmin && s.staff_can_view_parcels !== 'TRUE') return { ok: false, error: 'ยังไม่ได้รับสิทธิ์ดูพิกัดแปลง', code: 403 };
+  if (a === 'change_pin') {
+    var me = rows_('staff').filter(function (x) { return String(x.code) === String(u.code); })[0];
+    if (!me || hash_(String(b.old_pin || ''), me.salt) !== me.pin_hash) { audit_(u.code, 'change_pin_fail', ''); return { ok: false, error: 'รหัสเดิมไม่ถูกต้อง' }; }
+    if (!b.new_pin || String(b.new_pin).length < 8) return { ok: false, error: 'รหัสใหม่ต้องมีอย่างน้อย 8 ตัว' };
+    setPin_(u.code, String(b.new_pin));
+    return { ok: true };
+  }
+  if (a === 'parcels') {                       // พิกัด/ผังแปลง — แอดมินเห็นทั้งหมด · เจ้าหน้าที่เห็นเฉพาะอำเภอที่รับผิดชอบ (คอลัมน์ districts) และเมื่อแอดมินอนุญาต
+    var myDistricts = isAdmin ? null : staffDistricts_(u.code);
+    if (!isAdmin && (s.staff_can_view_parcels !== 'TRUE' || !myDistricts.length)) return { ok: false, error: 'ยังไม่ได้รับสิทธิ์ดูพิกัดแปลง (ต้องกำหนดอำเภอที่รับผิดชอบ)', code: 403 };
     var showNames = isAdmin ? (s.show_personal === 'TRUE' || s.show_parcel_names === 'TRUE') : (s.staff_can_view_names === 'TRUE' && s.show_parcel_names === 'TRUE');
-    var out = rows_('parcels_private').filter(function (r) { return (!b.year || String(r.year) === String(b.year)) && (!b.district || String(r.district) === String(b.district)); })
-      .slice(0, 20000).map(function (r) { var o = { key: r.key, year: r.year, district: r.district, tambon: r.tambon, moo: r.moo, lat: r.lat, lng: r.lng, rai: r.rai, variety: r.variety, plant_date: r.plant_date, harvest_date: r.harvest_date };
-        if (showNames) { o.owner_name = r.owner_name; o.name_note = r.note; } if (isAdmin && s.show_personal === 'TRUE') o.phone = r.phone; return o; });
-    audit_(u.code, 'view_parcels', 'n=' + out.length + (showNames ? ' +names' : ''));
-    return { ok: true, count: out.length, names: showNames, mode: s.map_mode, rows: out };
+    var yr = b.year ? String(b.year).replace(/\D/g, '') : '2569';
+    var psh = ss_().getSheetByName('parcels_' + yr);
+    if (!psh || psh.getLastRow() < 2) return { ok: true, count: 0, names: showNames, mode: s.map_mode, rows: [], year: yr };
+    var vals = psh.getDataRange().getValues(), hh = vals.shift(), ix = {};
+    hh.forEach(function (k, j) { ix[k] = j; });
+    var dwant = b.district ? String(b.district) : '';
+    var out = [];
+    for (var ri = 0; ri < vals.length && out.length < 60000; ri++) {
+      var r = vals[ri], d = String(r[ix.district]);
+      if (dwant && d !== dwant) continue;
+      if (myDistricts && myDistricts.indexOf(d) < 0) continue;
+      var o = { key: r[ix.key], year: r[ix.year], district: d, tambon: r[ix.tambon], moo: r[ix.moo], lat: r[ix.lat], lng: r[ix.lng], rai: r[ix.rai], variety: r[ix.variety], plant_date: r[ix.plant_date], harvest_date: r[ix.harvest_date] };
+      if (showNames) { o.owner_name = r[ix.owner_name]; o.name_note = r[ix.note]; }
+      if (isAdmin && s.show_personal === 'TRUE') o.phone = r[ix.phone];
+      out.push(o);
+    }
+    audit_(u.code, 'view_parcels', 'year=' + yr + ' district=' + (dwant || 'all') + ' n=' + out.length + (showNames ? ' +names' : ''));
+    return { ok: true, count: out.length, names: showNames, mode: s.map_mode, rows: out, year: yr };
   }
   if (a === 'import_parcels') {               // แอดมินนำเข้าข้อมูลรายแปลง (รวมข้อมูลส่วนบุคคล) เข้าชีตส่วนตัวเป็นชุด
     if (!isAdmin) return { ok: false, error: 'เฉพาะแอดมิน', code: 403 };
@@ -150,3 +183,18 @@ function doGet(e) {
   catch (err) { out = { ok: false, error: String(err) }; }
   return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
 }
+
+function staffDistricts_(code) {
+  var r = rows_('staff').filter(function (x) { return String(x.code) === String(code); })[0];
+  return r && r.districts ? String(r.districts).split(/[,\s]+/).filter(String) : [];
+}
+/** รันครั้งเดียวหลังอัปเกรด: เพิ่มคอลัมน์ districts ในแท็บ staff */
+function kppUpgrade() {
+  var s = sh_('staff'), h = s.getRange(1, 1, 1, s.getLastColumn()).getValues()[0];
+  if (h.indexOf('districts') < 0) s.getRange(1, h.length + 1).setValue('districts');
+  Logger.log('staff header: ' + s.getRange(1, 1, 1, s.getLastColumn()).getValues()[0].join(','));
+}
+function clearImportKey() { props_().deleteProperty('IMPORT_KEY'); Logger.log('ปิดคีย์นำเข้าแล้ว'); }
+
+/** ออกรหัสแอดมินใหม่แบบสุ่ม (ไม่ต้องใส่พารามิเตอร์) — ดูรหัสใน Execution log แล้วล็อกอินเปลี่ยนเป็นรหัสที่ต้องการในหน้าเว็บ */
+function resetAdminPin() { var pin = Utilities.getUuid().replace(/-/g, '').slice(0, 12); setPin_('admin', pin); Logger.log('รหัสแอดมินใหม่ (ใช้ล็อกอินแล้วเปลี่ยนในหน้าเว็บ): ' + pin); }

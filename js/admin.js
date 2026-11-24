@@ -66,8 +66,18 @@ KPP.Admin = (function () {
         ${toggleRow('show_personal', 'แสดงข้อมูลส่วนบุคคล (เบอร์โทร)', 'เฉพาะแอดมินเห็น')}
         ${toggleRow('staff_can_view_parcels', 'ให้เจ้าหน้าที่ดูพิกัดแปลงได้', 'ปิด = เฉพาะแอดมิน')}
         ${toggleRow('staff_can_view_names', 'ให้เจ้าหน้าที่เห็นชื่อ (เมื่อเปิดแสดงชื่อ)', 'ค่าเริ่มต้น: ปิด')}
-        <div class="row-gap" style="margin-top:8px"><button class="btn sm" id="admAudit">📜 ดูบันทึกการเข้าถึง</button></div><div id="admAuditOut"></div>` : '<p class="hint">เจ้าหน้าที่ดูพิกัดได้ตามที่แอดมินอนุญาต · ข้อมูลส่วนบุคคลเฉพาะแอดมิน</p>'}`;
+        <div class="row-gap" style="margin-top:8px"><button class="btn sm" id="admAudit">📜 ดูบันทึกการเข้าถึง</button></div><div id="admAuditOut"></div>` : '<p class="hint">เจ้าหน้าที่เห็นเฉพาะอำเภอที่ได้รับมอบหมาย (กำหนดในชีต KPP_PRIVATE แท็บ staff คอลัมน์ districts) · ข้อมูลส่วนบุคคลตามที่แอดมินเปิด</p>'}
+      <h4>🔑 เปลี่ยนรหัสผ่านของฉัน</h4>
+      <form id="admPinForm" class="adm-form"><input id="admOldPin" type="password" placeholder="รหัสเดิม" autocomplete="current-password" required>
+        <input id="admNewPin" type="password" placeholder="รหัสใหม่ (อย่างน้อย 8 ตัว)" autocomplete="new-password" minlength="8" required>
+        <div id="admPinMsg" class="hint" role="alert"></div><button class="btn sm" type="submit">บันทึกรหัสใหม่</button></form>`;
     $('admLogout').onclick = async () => { await call({ action: 'logout', token: S.token }); Object.assign(S, { token: null, role: null, name: '', rows: null, mode: 'grid' }); try { sessionStorage.removeItem(KEY); } catch (e) { /* ไม่เก็บ */ } clearLayer(); renderButton(); render(); };
+    $('admPinForm').addEventListener('submit', async (e) => {
+      e.preventDefault(); $('admPinMsg').textContent = 'กำลังบันทึก…';
+      const r = await call({ action: 'change_pin', old_pin: $('admOldPin').value, new_pin: $('admNewPin').value });
+      $('admPinMsg').textContent = r.ok ? 'เปลี่ยนรหัสผ่านแล้ว ครั้งต่อไปใช้รหัสใหม่' : (r.error || 'ไม่สำเร็จ');
+      if (r.ok) { $('admOldPin').value = ''; $('admNewPin').value = ''; }
+    });
     $('admMode').addEventListener('click', (e) => { const b = e.target.closest('button[data-mode]'); if (!b || b.disabled) return; S.mode = b.dataset.mode; applyMode(); render(); });
     el.querySelectorAll('[data-set]').forEach((i) => i.addEventListener('change', async () => {
       const r = await call({ action: 'set_settings', settings: { [i.dataset.set]: i.checked ? 'TRUE' : 'FALSE' } });
@@ -83,10 +93,13 @@ KPP.Admin = (function () {
   function clearLayer() { if (S.layer) { KPP.Map.map.removeLayer(S.layer); S.layer = null; } KPP.Map.layers.parcels.on = true; KPP.Map.refresh(); }
   async function applyMode() {
     if (!loggedIn() || S.mode !== 'parcel') { clearLayer(); return; }
+    const cur = KPP.App.state.year + '|' + (KPP.App.state.district || '');
+    if (S.rows && S.rowsKey !== cur) S.rows = null;      // เปลี่ยนปี/อำเภอ → โหลดใหม่
     if (!S.rows) {
-      const r = await call({ action: 'parcels', year: KPP.App.state.year === 2569 ? 2569 : '' });
+      const st = KPP.App.state, r = await call({ action: 'parcels', year: st.year, district: st.district || '' });
       if (!r.ok) { U.toast(r.error || 'โหลดพิกัดไม่สำเร็จ', 'err'); S.mode = 'grid'; render(); return; }
-      S.rows = r.rows; S.names = r.names;
+      S.rows = r.rows; S.names = r.names; S.rowsKey = st.year + '|' + (st.district || '');
+      if (!r.rows.length) U.toast('ไม่มีข้อมูลพิกัดแปลงในปี/อำเภอที่เลือก หรือยังไม่ได้รับมอบหมายอำเภอ', 'warn', 5000);
     }
     if (S.layer) KPP.Map.map.removeLayer(S.layer);
     KPP.Map.layers.parcels.on = false; KPP.Map.refresh();
@@ -106,5 +119,5 @@ KPP.Admin = (function () {
     $('adminModal').addEventListener('click', (e) => { if (e.target.id === 'adminModal' || e.target.closest('[data-close]')) close(); });
     if (loggedIn()) call({ action: 'whoami' }).then((r) => { if (r.ok) { S.settings = r.settings; S.role = r.user.role; renderButton(); } else { S.token = null; try { sessionStorage.removeItem(KEY); } catch (e) { /* ไม่เก็บ */ } renderButton(); } });
   }
-  return { init, open, loggedIn, isAdmin, call };
+  return { init, open, loggedIn, isAdmin, call, refresh() { if (loggedIn() && S.mode === 'parcel') applyMode(); } };
 })();

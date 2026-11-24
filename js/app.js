@@ -87,6 +87,7 @@ KPP.App = (function () {
       syncFilters();
       renderKPIs();
       M.render(state);
+      if (KPP.Admin && KPP.Admin.refresh) KPP.Admin.refresh();
       renderSide();
       renderCrumb();
       if (first) M.fitScope();
