@@ -323,6 +323,8 @@ KPP.App = (function () {
           after: () => { CH.cmdCompare(state, state.cmdMode); CH.cmdHistory(state); CH.cmdAgeStack(state); CH.cmdVarietyStack(state); CH.varietyClasses(state, 'chCmdVarList', 'cmdVarLegend2'); } },
         { id: 'tbl', label: 'ตารางการจัดการ', html: cmdTableHtml },
         { id: 'proj', label: 'แปลงส่งเสริมพันธุ์', html: projTableHtml },
+        { id: 'trend', label: 'แนวโน้มพันธุ์หลายปี', html: trendHtml },
+        { id: 'audit', label: 'ตรวจสอบพันธุ์', html: varietyAuditHtml },
         { id: 'rec', label: 'แนวทางจัดการ', html: cmdRecHtml }
       ]
     },
@@ -340,6 +342,7 @@ KPP.App = (function () {
             + card2('มันสำปะหลังที่ปลูกในแต่ละชั้นความเหมาะสม (ไร่)', srcBadge('LDD'), '<div class="chart-box tall"><canvas id="chSoilPlanted"></canvas></div>')
             + card2('ศักยภาพที่ดินสำหรับมันสำปะหลัง (ไร่)', srcBadge('LDD'), '<div class="chart-box tall"><canvas id="chSoilPotential"></canvas></div><p class="note">ที่มา: ตารางที่ 7 รายงาน Agri-Map จ.กำแพงเพชร กรมพัฒนาที่ดิน</p>'),
           after: () => CH.soilCharts(state) },
+        { id: 'series', label: 'ชุดดินแปลงมันฯ', html: soilSeriesHtml },
         { id: 'tbl', label: 'ตาราง LDD', html: soilTableHtml },
         { id: 'rec', label: 'แนวทางจัดการ', html: soilRecHtml }
       ]
@@ -383,6 +386,11 @@ KPP.App = (function () {
       const vb = DA.varietyBreakdown(fl), tot = vb.reduce((s, v) => s + v.rai, 0);
       p.push(li(`พันธุ์หลัก: ${vb.slice(0, 4).map((v) => `${U.esc(v.name.replace(/^พันธุ์\s*/, ''))} ${U.pct(v.rai / tot)}`).join(' · ')} ${badge('PARCEL')}`));
       p.push(li(`กลุ่มพันธุ์ต่อโรคใบด่าง: ต้านทาน <b>${U.pct(a.resistantPct)}</b> · ทนทาน <b>${U.pct(a.tolerantPct)}</b> · ทั่วไป ${U.pct(a.generalPct)} · อ่อนแอ <b>${U.pct(a.susceptiblePct)}</b> ของผังแปลง`));
+      const tys = TR() ? trendByYear(S.district).filter((o) => o.comparable) : [];
+      if (tys.length >= 2) {
+        const a0 = tys[0], a1 = tys[tys.length - 1], tt = propTest(a0.rtN, a0.n, a1.rtN, a1.n);
+        p.push(li(`แนวโน้มพันธุ์ต้านทาน+ทนทานในผังแปลง: ปี ${a0.year} ${U.pct(a0.rtShare)} → ปี ${a1.year} ${U.pct(a1.rtShare)} (n = ${U.fmt(a0.n)} / ${U.fmt(a1.n)} แปลง${tt ? `, ${tt.p < 0.05 ? 'เปลี่ยนแปลงอย่างมีนัยสำคัญ' : 'ไม่แตกต่างอย่างมีนัยสำคัญ'} p ${tt.p < 0.001 ? '&lt; 0.001' : '= ' + tt.p.toFixed(3)}` : ''}) ${badge('PARCELALL')}`));
+      }
       if (U.isNum(a.rainyPct)) p.push(li(`ปลูกช่วงฤดูฝน (พ.ค.–ก.ย.) ${U.pct(a.rainyPct)} ของพื้นที่ในผังแปลง`));
     }
     if (dists.length) p.push(li(`อำเภอที่มีพื้นที่ขึ้นทะเบียนมากที่สุด: ${names(dists.slice().sort((x, y) => y.planted - x.planted).slice(0, 3), (u) => U.fmt(u.planted) + ' ไร่')}`));
@@ -399,6 +407,12 @@ KPP.App = (function () {
     } else dz.push(li(S.year === 2569 ? 'โรคใบด่าง: รายงานระบาดมีเฉพาะระดับอำเภอ ยังไม่มีผลสำรวจรายตำบล' : `โรคใบด่าง: ไม่มีรายงานในปี ${S.year}`));
     if (U.isNum(a.rrIndex)) dz.push(li(`โรครากเน่าโคนเน่า: ดัชนีความเสี่ยง <b>${a.rrIndex}</b>/100 ${status(a.rrLevel)} · แปลงเสี่ยงสูง ${U.fmt(a.rrHigh)} ไร่ (${U.pct(a.rrHighPct)}) ${badge('MODEL')}`));
     if (U.isNum(a.soilPoorPct)) so.push(li(`พื้นที่ขึ้นทะเบียนอยู่บนดินเหมาะสมน้อย/ไม่เหมาะสม (S3+N) <b>${U.pct(a.soilPoorPct)}</b> · S3 ${U.fmt(a.soil_S3)} ไร่ · N ${U.fmt(a.soil_N)} ไร่ ${badge('LDD')}`));
+    const Tt = TR();
+    if (Tt && Tt.soil.rows.length) {
+      const sy = Tt.soil.rows.filter((r) => r[0] === 2569 && (!S.district || r[1] === S.district));
+      const tot = sy.reduce((x, r) => x + r[4], 0), lowR = sy.filter((r) => r[2] >= 0 && Tt.soil.units[r[2]].fertility === 'ต่ำ').reduce((x, r) => x + r[4], 0);
+      if (tot) so.push(li(`แปลงมันสำปะหลังปี 2569 อยู่บนชุดดินความอุดมสมบูรณ์ต่ำ <b>${U.pct(lowR / tot)}</b> (${U.fmt(lowR)} ไร่ ตามแผนที่ชุดดิน 1:25,000) ${badge('LDDSOIL')}`));
+    }
     const t7 = (window.KPP_LDD ? window.KPP_LDD.table7.rows : []).filter((r) => !S.district || r.district_code === S.district);
     if (t7.length) {
       const s3n = t7.reduce((s, r) => s + r.planted.S3 + r.planted.N, 0), rem = t7.reduce((s, r) => s + r.remaining.S1 + r.remaining.S2, 0);
@@ -568,6 +582,154 @@ KPP.App = (function () {
         <td class="l">${Object.keys(r.varieties).map(U.esc).join(', ')}</td><td class="l">${Object.entries(r.irrigation).map(([k, v]) => U.esc(k.replace(/\s*\(.*\)/, '')) + ' ' + v).join(', ') || '–'}</td><td>${U.pct(cmdT[r.code])}</td></tr>`).join('')}</tbody></table></div>
       <p class="note">* รายงานระบาดมีเฉพาะระดับอำเภอ ระบบไม่ประมาณค่ารายตำบล (แสดง – จนกว่าจะนำเข้าผลสำรวจรายตำบล) · ไม่แสดงชื่อ/เบอร์โทรเกษตรกร</p>`);
   }
+  /* ---------- ผังแปลงหลายปี (data/parcel_trends.js): แนวโน้มพันธุ์ · การเปลี่ยนพันธุ์ในแปลงเดิม · ชุดดิน ---------- */
+  const TR = () => window.KPP_TRENDS;
+  // ช่วงความเชื่อมั่น 95% ของสัดส่วนแบบ Wilson (x สำเร็จจาก n)
+  function wilson(x, n, z = 1.96) {
+    if (!n) return [null, null];
+    const p = x / n, d = 1 + z * z / n, c = (p + z * z / (2 * n)) / d, h = z * Math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d;
+    return [Math.max(0, c - h), Math.min(1, c + h)];
+  }
+  // การทดสอบสัดส่วนสองกลุ่ม (two-proportion z-test) — คืนค่า z และ p สองทาง
+  function propTest(x1, n1, x2, n2) {
+    if (!n1 || !n2) return null;
+    const p = (x1 + x2) / (n1 + n2), se = Math.sqrt(p * (1 - p) * (1 / n1 + 1 / n2));
+    if (!se) return null;
+    const z = (x2 / n2 - x1 / n1) / se;
+    const t = 1 / (1 + 0.2316419 * Math.abs(z)), dd = 0.3989423 * Math.exp(-z * z / 2);
+    const tail = dd * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+    return { z, p: 2 * tail };
+  }
+  const CLS = () => C.VARIETY_CLASSES.map((v) => v.key);
+  function trendByYear(dcode) {
+    const T = TR(); if (!T) return [];
+    const by = {};
+    T.variety.rows.forEach(([y, dc, , bi, n, rai]) => {
+      if (dcode && dc !== dcode) return;
+      const k = DA.varietyClass(T.breeds[bi]);
+      const o = by[y] || (by[y] = { year: y, n: 0, rai: 0, cls: {}, clsN: {}, breeds: {} });
+      o.n += n; o.rai += rai; o.cls[k] = (o.cls[k] || 0) + rai; o.clsN[k] = (o.clsN[k] || 0) + n;
+      o.breeds[T.breeds[bi]] = (o.breeds[T.breeds[bi]] || 0) + rai;
+    });
+    return Object.values(by).sort((a, b) => a.year - b.year).map((o) => {
+      const rtN = (o.clsN.resistant || 0) + (o.clsN.tolerant || 0);
+      return Object.assign(o, { rtShare: U.safeDiv((o.cls.resistant || 0) + (o.cls.tolerant || 0), o.rai), rtN, ci: wilson(rtN, o.n), comparable: !!(T.years[o.year] || {}).comparable, cov: (T.years[o.year] || {}).coverage_vs_median });
+    });
+  }
+  const stackBar = (o) => `<div class="stack">${C.VARIETY_CLASSES.map((v) => { const s = U.safeDiv(o.cls[v.key] || 0, o.rai) || 0; return s ? `<i style="width:${(s * 100).toFixed(2)}%;background:${v.color}" title="${v.label} ${U.pct(s)}"></i>` : ''; }).join('')}</div>`;
+
+  function trendHtml() {
+    const T = TR();
+    if (!T) return '<p class="hint">ยังไม่มีข้อมูลผังแปลงหลายปี — รัน tools/extract_parcels.py และ tools/analyze_parcels.py</p>';
+    const ys = trendByYear(state.district);
+    const comp = ys.filter((o) => o.comparable);
+    const f0 = comp[0], f1 = comp[comp.length - 1];
+    const tst = f0 && f1 && f0 !== f1 ? propTest(f0.rtN, f0.n, f1.rtN, f1.n) : null;
+    const scope = state.district ? 'อ.' + U.esc(DA.D.dByCode[state.district].name) : 'จ.กำแพงเพชร';
+    // การเปลี่ยนพันธุ์ในแปลงเดิม (คู่ปีล่าสุด)
+    const tr = T.transitions.rows.filter((r) => !state.district || r[2] === state.district);
+    const RT = (k) => k === 'resistant' || k === 'tolerant';
+    const P = {};
+    tr.forEach(([y, y1, , b0, b1, n, rai]) => {
+      const k0 = b0 < 0 ? 'general' : DA.varietyClass(T.breeds[b0]), k1 = b1 < 0 ? 'general' : DA.varietyClass(T.breeds[b1]);
+      const o = P[y] || (P[y] = { y, y1, n: 0, rai: 0, up: 0, down: 0, M: {} });
+      const c = (o.M[k0] = o.M[k0] || {}); c[k1] = c[k1] || { n: 0, rai: 0 }; c[k1].n += n; c[k1].rai += rai;
+      o.n += n; o.rai += rai; if (!RT(k0) && RT(k1)) o.up += rai; if (RT(k0) && !RT(k1)) o.down += rai;
+    });
+    const plist = Object.values(P).sort((a, b) => a.y - b.y);
+    const sel = plist.filter((o) => (T.years[o.y] || {}).comparable && (T.years[o.y1] || {}).comparable).pop() || plist.slice().sort((a, b) => b.n - a.n)[0];
+    const y0 = sel ? sel.y : null, M = sel ? sel.M : {}, pairN = sel ? sel.n : 0, pairRai = sel ? sel.rai : 0, up = sel ? sel.up : 0, down = sel ? sel.down : 0;
+    const pairTable = plist.length ? `<div class="table-wrap"><table class="risk"><thead><tr><th>ช่วงปี</th><th>จับคู่ได้ (แปลง)</th><th>อัตราจับคู่</th><th>ไร่</th><th>เปลี่ยนเป็นต้านทาน/ทนทาน (ไร่)</th><th>เปลี่ยนกลับเป็นทั่วไป/อ่อนแอ (ไร่)</th><th>สุทธิ</th></tr></thead><tbody>${
+      plist.map((o) => `<tr class="${o === sel ? 'sel' : ''}"><td>${o.y} → ${o.y1}</td><td>${U.fmt(o.n)}</td><td>${U.pct(((T.quality.panel_match || {}).pairs || {})[o.y + '-' + o.y1] ? T.quality.panel_match.pairs[o.y + '-' + o.y1].rate : null, 0)}</td><td>${U.fmt(o.rai)}</td><td>${U.fmt(o.up)}</td><td>${U.fmt(o.down)}</td><td><b>${o.up - o.down >= 0 ? '+' : ''}${U.fmt(o.up - o.down)}</b></td></tr>`).join('')}</tbody></table></div>` : '';
+    const vl = (k) => C.VARIETY_CLASSES.find((v) => v.key === k);
+    const last = ys[ys.length - 1];
+    const topB = last ? Object.entries(last.breeds).sort((a, b) => b[1] - a[1]).slice(0, 8) : [];
+    return card2(`แนวโน้มพันธุ์มันสำปะหลังจากผังแปลงหลายปี · ${scope}`, srcBadge('PARCELALL'), `
+      <div class="legend-inline">${C.VARIETY_CLASSES.map((v) => `<span><i class="sw" style="background:${v.color}"></i>${v.label}</span>`).join('')}</div>
+      <div class="table-wrap"><table class="risk"><thead><tr><th>ปีเพาะปลูก</th><th>แปลง (n)</th><th>พื้นที่ (ไร่)</th><th style="min-width:180px">สัดส่วนกลุ่มพันธุ์ (ถ่วงพื้นที่)</th><th>ต้านทาน+ทนทาน</th><th>95% CI (สัดส่วนแปลง)</th><th>ไม่ระบุพันธุ์</th></tr></thead><tbody>${
+        ys.map((o) => `<tr class="${o.comparable ? '' : 'dim'}"><td>${o.year}${o.comparable ? '' : ' <small class="hint-i">(ข้อมูลไม่ครบ)</small>'}</td><td>${U.fmt(o.n)}</td><td>${U.fmt(o.rai)}</td><td>${stackBar(o)}</td><td><b>${U.pct(o.rtShare)}</b></td>
+          <td>${o.ci[0] === null ? '–' : U.pct(o.ci[0]) + '–' + U.pct(o.ci[1])}</td><td>${U.pct(U.safeDiv(o.breeds['ไม่ระบุพันธุ์'] || 0, o.rai))}</td></tr>`).join('')
+      }</tbody></table></div>
+      ${tst ? `<p class="hint">เปรียบเทียบปี ${f0.year} กับ ${f1.year}: สัดส่วนแปลงพันธุ์ต้านทาน+ทนทาน ${U.pct(f0.rtN / f0.n)} → ${U.pct(f1.rtN / f1.n)} · z = ${tst.z.toFixed(2)}, p ${tst.p < 0.001 ? '&lt; 0.001' : '= ' + tst.p.toFixed(3)} → <b>${tst.p < 0.05 ? 'แตกต่างอย่างมีนัยสำคัญทางสถิติ (α = 0.05)' : 'ไม่แตกต่างอย่างมีนัยสำคัญ'}</b></p>` : ''}
+      <h4 class="goal-h">🔁 การเปลี่ยนพันธุ์ในแปลงเดิม</h4><p class="hint">รหัสแปลงในผังแปลงไม่คงที่ข้ามปี จึงจับคู่ตามตำแหน่ง: ${U.esc((T.quality.panel_match || {}).method || '')} · ช่วงปีใช้เฉพาะปีที่ข้อมูลครบ</p>${pairTable}
+      <h4 class="goal-h">ตารางเปลี่ยนกลุ่มพันธุ์ ปี ${y0 || '–'} → ${sel ? sel.y1 : '–'} (${U.fmt(pairN)} แปลง ${U.fmt(pairRai)} ไร่)</h4>
+      ${pairN ? `<div class="table-wrap"><table class="risk"><thead><tr><th>จาก \\ เป็น</th>${CLS().map((k) => `<th>${vl(k).label}</th>`).join('')}</tr></thead><tbody>${
+        CLS().map((a) => `<tr><td><span class="vclass-chip" style="background:${vl(a).color}">${vl(a).label}</span></td>${CLS().map((b) => { const c = (M[a] || {})[b]; return `<td${a === b ? ' style="background:var(--surface-2)"' : ''}>${c ? U.fmt(c.rai) + ' <small class="hint-i">(' + U.fmt(c.n) + ')</small>' : '–'}</td>`; }).join('')}</tr>`).join('')
+      }</tbody></table></div>
+      <p class="hint">หน่วย: ไร่ (จำนวนแปลง) · เปลี่ยนจากพันธุ์ทั่วไป/อ่อนแอ → ต้านทาน/ทนทาน <b>${U.fmt(up)}</b> ไร่ · ย้อนกลับจากต้านทาน/ทนทาน → ทั่วไป/อ่อนแอ <b>${U.fmt(down)}</b> ไร่</p>` : '<p class="hint">ไม่มีแปลงที่ขึ้นทะเบียนต่อเนื่องสองปี</p>'}
+      ${topB.length ? `<p class="hint">พันธุ์หลักปี ${last.year}: ${topB.map(([b, r]) => `${U.esc(b.replace(/^พันธุ์\\s*/, ''))} ${U.pct(r / last.rai)}`).join(' · ')}</p>` : ''}
+      <p class="note">${U.esc(T.method)} · ตัดออก ${U.fmt(T.quality.excluded_from_totals)} รายการจาก ${U.fmt(T.quality.rows_raw)} (ไม่มีปี ${U.fmt(T.quality.by_flag.no_year)} · พื้นที่ผิดปกติ ${U.fmt(T.quality.by_flag.bad_area)} · พื้นที่กิจกรรมเกินพื้นที่แปลง ${U.fmt(T.quality.by_flag.area_gt_parcel)}) · ${U.esc(T.rule || '')} · แถวสีจาง = ข้อมูลส่งออกไม่ครบ ไม่นำมาเปรียบเทียบ</p>`);
+  }
+
+  function soilSeriesHtml() {
+    const T = TR();
+    if (!T || !T.soil.rows.length) return '<p class="hint">ยังไม่มีผลซ้อนทับแปลงกับชุดดิน — รัน tools/build_ldd_soilseries.py แล้ว tools/analyze_parcels.py</p>';
+    const SS = { units: T.soil.units, source: C.SOURCES.LDDSOIL.note, note: 'ความอุดมสมบูรณ์และ pH เป็นค่าประจำหน่วยแผนที่จากการสำรวจดิน ไม่ใช่ผลวิเคราะห์ดินรายแปลง' };
+    const years = [...new Set(T.soil.rows.map((r) => r[0]))].sort();
+    const yr = years.includes(state.year) ? state.year : years.filter((y) => (T.years[y] || {}).comparable).pop() || years[years.length - 1];
+    const rows = T.soil.rows.filter((r) => r[0] === yr && (!state.district || r[1] === state.district));
+    const tot = rows.reduce((s, r) => s + r[4], 0), totN = rows.reduce((s, r) => s + r[3], 0);
+    const agg = (keyFn) => { const o = {}; rows.forEach(([, , u, n, rai]) => { const k = u < 0 ? '(นอกขอบเขตแผนที่ดิน)' : keyFn(SS.units[u]); const x = o[k] || (o[k] = { n: 0, rai: 0 }); x.n += n; x.rai += rai; }); return Object.entries(o).sort((a, b) => b[1].rai - a[1].rai); };
+    const fert = agg((u) => (u.fertility && u.fertility !== '-' ? u.fertility : 'ไม่ประเมิน'));
+    const ph = agg((u) => u.ph || 'ไม่ระบุ');
+    const ser = agg((u) => `${u.name} (${u.code}) · กลุ่ม ${u.group}`).slice(0, 12);
+    const tex = agg((u) => u.texture || 'ไม่ระบุ').slice(0, 8);
+    const tbl = (title, list) => `<div><div class="mini-h">${title}</div><table class="risk"><tbody>${list.map(([k, v]) => `<tr><td class="l">${U.esc(k)}</td><td>${U.fmt(v.rai)}</td><td><b>${U.pct(v.rai / tot)}</b></td></tr>`).join('')}</tbody></table></div>`;
+    const low = (fert.find(([k]) => k === 'ต่ำ') || [, { rai: 0 }])[1].rai;
+    const acid = ph.filter(([k]) => /^กรดจัดมาก/.test(k)).reduce((s, [, v]) => s + v.rai, 0);
+    return card2(`ชุดดินในแปลงปลูกมันสำปะหลัง ปี ${yr}${state.district ? ' · อ.' + U.esc(DA.D.dByCode[state.district].name) : ''}`, srcBadge('LDDSOIL'), `
+      <div class="goal-grid">
+        <div><span>แปลงที่ซ้อนทับชุดดินได้</span><b>${U.fmt(totN)}</b> แปลง <small>${U.fmt(tot)} ไร่</small></div>
+        <div><span>ปลูกบนดินความอุดมสมบูรณ์ต่ำ</span><b>${U.pct(low / tot)}</b><small>${U.fmt(low)} ไร่</small></div>
+        <div><span>ดินบนเริ่มที่กรดจัดมาก</span><b>${U.pct(acid / tot)}</b><small>${U.fmt(acid)} ไร่</small></div>
+      </div>
+      <div class="grid2">${tbl('ความอุดมสมบูรณ์ดินบน', fert)}${tbl('ปฏิกิริยาดินบน (pH)', ph)}</div>
+      <div class="grid2">${tbl('ชุดดินที่ปลูกมากที่สุด', ser)}${tbl('เนื้อดินบน', tex)}</div>
+      <div class="ins"><h4>📋 การใช้ข้อมูล</h4><ul>
+        <li>ความอุดมสมบูรณ์และ pH เป็นค่าประจำหน่วยแผนที่ดินจากการสำรวจ (มาตราส่วน 1:25,000) ใช้วางแผนระดับพื้นที่ ไม่ใช่ค่าวิเคราะห์ดินรายแปลง</li>
+        <li>การใส่ปุ๋ยและปูนรายแปลงควรใช้ผลวิเคราะห์ดินจริง — เก็บตัวอย่างดินส่งสถานีพัฒนาที่ดินกำแพงเพชร หรือใช้ชุดตรวจดินภาคสนาม แล้วใส่ปุ๋ยตามค่าวิเคราะห์ดิน</li>
+        <li>พื้นที่ดินความอุดมสมบูรณ์ต่ำ: เพิ่มอินทรียวัตถุ (ปุ๋ยหมัก/ปุ๋ยพืชสด) ผ่าน ศดปช. และสารเร่ง พด. ของกรมพัฒนาที่ดิน</li>
+        <li>เปิดชั้น "ชุดดิน 1:25,000" ในแผงชั้นข้อมูล แล้วคลิกบนแผนที่เพื่อดูชุดดินแต่ละจุด</li></ul></div>
+      <p class="note">ที่มา: ${U.esc(SS.source)} · ${U.esc(SS.note)} · ตำแหน่งแปลง = จุดศูนย์กลางแปลงในผังแปลงดิจิทัล</p>`);
+  }
+
+  /* ----- ตรวจสอบชื่อพันธุ์กับทะเบียนพันธุ์ของหน่วยงาน (VARIETY_REGISTRY) ----- */
+  function varietyAuditHtml() {
+    const REG = {}; Object.entries(C.VARIETY_REGISTRY).forEach(([k, v]) => { REG[DA.canon(k)] = Object.assign({ std: k }, v); });
+    const rows = {};
+    const add = (name, k, v) => { const c = DA.canon(name); const r = rows[c] || (rows[c] = { names: new Set(), parcel: 0, support: 0, monitor: 0 }); r.names.add(name); r[k] += v; };
+    DA.varietyBreakdown(f()).forEach((v) => add(v.name, 'parcel', v.rai));
+    ((DA.D.rep.support || {}).records || []).filter((r) => !state.district || r.d === state.district).forEach((r) => add(r.variety, 'support', r.rai));
+    ((DA.D.rep.plot_monitor || {}).byVariety || []).forEach((v) => add(v.variety, 'monitor', v.area || 0));
+    const totP = Object.values(rows).reduce((s, r) => s + r.parcel, 0);
+    const CMDL = { r: 'ต้านทาน', t: 'ทนทาน', s: 'อ่อนแอ' }, CMDK = { r: 'resistant', t: 'tolerant', s: 'susceptible' };
+    const list = Object.entries(rows).map(([c, r]) => {
+      const g = REG[c] || { std: [...r.names][0], st: 'unverified', ag: '—', cmd: '', src: [], note: 'ไม่พบในทะเบียนพันธุ์ของระบบ' };
+      const cls = DA.varietyClass([...r.names][0]);
+      let flag = '';
+      if (g.cmd && CMDK[g.cmd] !== cls) flag = `กลุ่มในระบบ (${C.VARIETY_CLASSES.find((x) => x.key === cls).label}) ไม่ตรงแหล่งอ้างอิง (${CMDL[g.cmd]})`;
+      else if (!g.cmd && (cls === 'resistant' || cls === 'tolerant')) flag = 'จัดเป็นต้านทาน/ทนทาน แต่ไม่มีแหล่งอ้างอิงรองรับ';
+      return Object.assign({ c, cls, flag, g }, r);
+    }).sort((a, b) => b.parcel - a.parcel || b.support - a.support);
+    const bySt = {}; list.forEach((r) => { bySt[r.g.st] = (bySt[r.g.st] || 0) + r.parcel; });
+    const stChip = (st) => { const s = C.VARIETY_STATUS[st]; return `<span class="vclass-chip" style="background:${s.color}">${s.label}</span>`; };
+    const srcs = (ix) => ix.map((i) => `<a href="${U.esc(C.VARIETY_SOURCES[i].u)}" target="_blank" rel="noopener" title="${U.esc(C.VARIETY_SOURCES[i].t)}">[${i + 1}]</a>`).join(' ');
+    const flagged = list.filter((r) => r.flag || r.g.st === 'unverified' || r.g.st === 'local');
+    return card2(`ตรวจสอบพันธุ์มันสำปะหลังกับทะเบียนพันธุ์ของหน่วยงาน${state.district ? ' · อ.' + U.esc(DA.D.dByCode[state.district].name) : ''}`, srcBadge('PARCEL'), `
+      <div class="goal-grid">${Object.keys(C.VARIETY_STATUS).filter((k) => bySt[k]).map((k) => `<div><span>${stChip(k)}</span><b>${U.pct(U.safeDiv(bySt[k], totP))}</b><small>${U.fmt(bySt[k])} ไร่ในผังแปลง</small></div>`).join('')}</div>
+      <p class="hint">พันธุ์ที่พบในผังแปลง ${list.filter((r) => r.parcel > 0).length} ชื่อ · ต้องตรวจสอบ/แก้ไข ${flagged.length} รายการ · ชื่อพันธุ์จับคู่แบบตัดคำว่า "พันธุ์/มันสำปะหลัง" และชื่อเรียกอื่น (เช่น KU50 = เกษตรศาสตร์ 50)</p>
+      <div class="table-wrap"><table class="risk"><thead><tr><th>ชื่อพันธุ์ (ชื่อมาตรฐาน)</th><th>ผังแปลง (ไร่)</th><th>%</th><th>สนับสนุน (ไร่)</th><th>สถานะพันธุ์</th><th>หน่วยงานผู้พัฒนา</th><th>ปฏิกิริยาโรคใบด่าง (อ้างอิง)</th><th>กลุ่มในระบบ</th><th>ข้อสังเกต</th></tr></thead><tbody>${
+        list.map((r) => `<tr class="${r.flag ? 'warn-row' : ''}"><td class="l">${U.esc(r.g.std)}${[...r.names].some((n) => n !== r.g.std) ? `<br><small class="hint-i">ในข้อมูล: ${[...r.names].map(U.esc).join(', ')}</small>` : ''}</td>
+          <td>${r.parcel ? U.fmt(r.parcel) : '–'}</td><td>${r.parcel ? U.pct(r.parcel / totP) : '–'}</td><td>${r.support ? U.fmt(r.support, 1) : '–'}</td>
+          <td class="l">${stChip(r.g.st)}</td><td class="l" style="white-space:normal">${U.esc(r.g.ag)}</td>
+          <td class="l">${r.g.cmd ? CMDL[r.g.cmd] + (r.g.cmdBy === 'owner' ? ' <span class="hint-i">(มติเจ้าของระบบ)</span>' : '') : '<span class="hint-i">ไม่มีข้อมูลทางการ</span>'} ${srcs(r.g.src)}</td>
+          <td class="l"><span class="vclass-chip" style="background:${C.VARIETY_CLASSES.find((x) => x.key === r.cls).color}">${C.VARIETY_CLASSES.find((x) => x.key === r.cls).label}</span></td>
+          <td class="l" style="white-space:normal">${r.flag ? '⚠️ ' + U.esc(r.flag) + (r.g.note ? ' · ' : '') : ''}${U.esc(r.g.note || '')}</td></tr>`).join('')
+      }</tbody></table></div>
+      <p class="note">เกณฑ์: "กวก. รับรอง/แนะนำ" ตามรายชื่อพันธุ์ที่กรมวิชาการเกษตรประกาศ · "มก./มูลนิธิฯ พัฒนา" พันธุ์ของมหาวิทยาลัยเกษตรศาสตร์ร่วมกับมูลนิธิสถาบันพัฒนามันสำปะหลังแห่งประเทศไทย · "ต้องตรวจสอบ" ไม่พบชื่อในเอกสารอ้างอิง อาจบันทึกผิดหรือเป็นสายพันธุ์ทดลอง ควรตรวจสอบกับเกษตรกร/ศูนย์วิจัย · ปฏิกิริยาต่อโรคใบด่างใช้เฉพาะที่มีเอกสารของหน่วยงานรองรับ</p>
+      <ol class="src-list">${C.VARIETY_SOURCES.map((s) => `<li><a href="${U.esc(s.u)}" target="_blank" rel="noopener">${U.esc(s.t)}</a></li>`).join('')}</ol>`);
+  }
+
   function cmdRecHtml() {
     const a = DA.agg(state.year, f());
     const rows = DA.cmdMatrix(state.year, state.district).filter((r) => !r.minor);
@@ -650,6 +812,8 @@ KPP.App = (function () {
       <div class="lp-item">${chk('resist.on', '🛡️ พันธุ์ต้านทาน/ทนทาน + แปลงส่งเสริม')}${op('resist')}</div>
       <div class="lp-item">${chk('flood.on', '🌊 พื้นที่น้ำท่วมซ้ำซาก')}${op('flood')}</div>
       <div class="lp-item">${chk('soil.on', '🟫 ความเหมาะสมดิน S1–N <span class="badge src-real">LDD</span>')}${op('soil')}</div>
+      <div class="lp-item">${chk('series.on', '🟤 ชุดดิน 1:25,000 <span class="badge src-real">LDD</span>')}
+        <div class="lp-sub"><select data-sby aria-label="แสดงชุดดินตาม">${[['fertility', 'ความอุดมสมบูรณ์'], ['ph', 'ปฏิกิริยาดิน (pH)'], ['group', 'กลุ่มชุดดิน']].map(([k, l]) => `<option value="${k}" ${L_.series.by === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>${op('series')}</div>
       <div class="lp-item">${chk('networks.on', '🏠 ศูนย์เครือข่าย กสก.')}
         <div class="lp-sub" style="flex-direction:column;align-items:flex-start">${Object.entries(M.NET).map(([k, n]) => `<label><input type="checkbox" data-l="networks.${k}" ${L_.networks[k] ? 'checked' : ''}> <span class="net-icon ${n.sq ? 'sq' : ''}" style="display:inline-grid;background:${n.color};width:16px;height:16px;font-size:8px;border-width:1px;vertical-align:middle">${n.glyph}</span> ${n.label} (${window.KPP_NETWORKS[k].rows.length})</label>`).join('')}</div></div></div>`);
     if (M.custom.length) {
@@ -702,6 +866,7 @@ KPP.App = (function () {
       const t = e.target;
       if (t.name === 'base') { M.setBase(t.value); M.refresh(); return; }
       if (t.dataset.l) { set(t.dataset.l, t.checked); M.refresh(); return; }
+      if (t.dataset.sby !== undefined) { M.layers.series.by = t.value; M.layers.series.on = true; renderLayerPanel(); M.refresh(); return; }
       if (t.dataset.custom) M.setCustom(t.dataset.custom, 'on', t.checked);
     });
     $('lpBody').addEventListener('input', (e) => {

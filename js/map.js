@@ -12,6 +12,7 @@ KPP.Map = (function () {
     resist: { on: false, opacity: 0.9 },
     flood: { on: true, opacity: 0.8 },
     soil: { on: false, opacity: 0.75 },
+    series: { on: false, opacity: 0.55, by: 'fertility' },   // ชุดดิน LDD 1:25,000 (โหลดเมื่อเปิดชั้น)
     networks: { on: true, pest: true, soil: false, lc: true, farm: true }
   };
   const custom = [];
@@ -216,6 +217,7 @@ KPP.Map = (function () {
     drawTambonOutline();
     drawFlood();
     drawSoil();
+    drawSoilSeries();
     drawDisease();
     drawResist();
     drawProjects();
@@ -417,6 +419,56 @@ KPP.Map = (function () {
     if (G.soil) { map.removeLayer(G.soil); G.soil = null; }
     if (!L_.soil.on || custom.some((c) => c.role === 'soil') || !window.KPP_LDD) return;
     G.soil = L.imageOverlay('assets/ldd_cassava_suitability.png', window.KPP_LDD.bounds, { pane: 'soil', opacity: L_.soil.opacity, interactive: false, className: 'soil-img' }).addTo(map);
+  }
+
+  /* ---------- ชุดดิน กรมพัฒนาที่ดิน (1:25,000) — โหลดไฟล์ data/ldd_soilseries.js เมื่อเปิดชั้นครั้งแรก ---------- */
+  const FERT = { 'สูง': '#1a9850', 'ปานกลาง': '#a6d96a', 'ต่ำ': '#fdae61' };
+  const PH_STEPS = [['กรดจัดมาก', '#d7301f', 'กรดจัดมาก (4.5–5.0)'], ['กรดจัด', '#fc8d59', 'กรดจัด (5.1–5.5)'], ['กรดปานกลาง', '#fee08b', 'กรดปานกลาง (5.6–6.0)'],
+    ['กรดเล็กน้อย', '#d9ef8b', 'กรดเล็กน้อย (6.1–6.5)'], ['เป็นกลาง', '#91cf60', 'เป็นกลาง (6.6–7.3)'], ['ด่าง', '#4575b4', 'ด่าง (> 7.3)']];
+  const phStep = (t) => { t = String(t || ''); const i = PH_STEPS.findIndex(([k]) => t.startsWith(k)); return i; };
+  const SGPAL = ['#8dd3c7', '#ffffb3', '#bebada', '#fb8072', '#80b1d3', '#fdb462', '#b3de69', '#fccde5', '#bc80bd', '#ccebc5', '#ffed6f', '#d9d9d9'];
+  let seriesLoading = false;
+  function seriesColor(u) {
+    if (!u) return NA;
+    if (L_.series.by === 'ph') { const i = phStep(u.ph); return i < 0 ? NA : PH_STEPS[i][1]; }
+    if (L_.series.by === 'group') return u.group === '62' ? '#bdbdbd' : SGPAL[(+u.group || 0) % SGPAL.length];
+    return FERT[u.fertility] || NA;
+  }
+  function seriesPopup(u) {
+    const row = (k, v) => (v ? `<tr><td>${k}</td><td>${U.esc(v)}</td></tr>` : '');
+    return `<div class="pp"><h4>ชุดดิน${U.esc(u.name)} (${U.esc(u.code)})</h4><table>${row('กลุ่มชุดดิน', u.group === '62' ? '62 (พื้นที่ลาดชันเชิงซ้อน)' : u.group)}${row('เนื้อดินบน', u.texture)}${row('เนื้อดินล่าง (กลุ่มชุดดิน)', u.tex_low)}
+      ${row('ความอุดมสมบูรณ์ดินบน', u.fertility)}${row('ปฏิกิริยาดินบน', u.ph)}${row('pH ดินบน / ดินล่าง (กลุ่มชุดดิน)', u.ph_range_top ? u.ph_range_top + ' / ' + (u.ph_range_low || '–') : '')}
+      ${row('พื้นที่ชุดดินนี้ทั้งจังหวัด', U.fmt(u.rai) + ' ไร่')}</table>
+      <div class="hint">ค่าประจำหน่วยแผนที่ดินจากการสำรวจ ไม่ใช่ผลวิเคราะห์ดินรายแปลง — ควรเก็บตัวอย่างดินส่งวิเคราะห์ก่อนใส่ปุ๋ย</div>
+      <div class="pp-src"><span class="badge src-real" title="${U.esc(C.SOURCES.LDDSOIL.note)}">${U.esc(C.SOURCES.LDDSOIL.label)}</span></div></div>`;
+  }
+  function drawSoilSeries() {
+    if (G.series) { map.removeLayer(G.series); G.series = null; }
+    if (!L_.series.on) return;
+    const SS = window.KPP_SOILSERIES;
+    if (!SS) {
+      if (seriesLoading) return;
+      seriesLoading = true;
+      const sc = document.createElement('script');
+      sc.src = 'data/ldd_soilseries.js?v=' + C.VERSION;
+      sc.onload = () => { seriesLoading = false; drawSoilSeries(); buildLegend(); };
+      sc.onerror = () => { seriesLoading = false; U.toast('โหลดชั้นชุดดินไม่สำเร็จ', 'err'); };
+      document.head.appendChild(sc);
+      return;
+    }
+    if (!G.seriesRenderer) G.seriesRenderer = L.canvas({ pane: 'soil', padding: 0.3 });
+    const op = L_.series.opacity;
+    G.series = L.geoJSON(SS.geojson, {
+      renderer: G.seriesRenderer, pane: 'soil',
+      style: (f) => ({ color: '#57534e', weight: 0.4, opacity: 0.6, fillColor: seriesColor(SS.units[f.properties.u]), fillOpacity: op }),
+      onEachFeature: (f, layer) => layer.on('click', (e) => { L.DomEvent.stopPropagation(e); L.popup().setLatLng(e.latlng).setContent(seriesPopup(SS.units[f.properties.u])).openOn(map); })
+    }).addTo(map);
+  }
+  function seriesLegend() {
+    const by = L_.series.by;
+    const items = by === 'ph' ? PH_STEPS.map(([, c, l]) => ({ color: c, label: l })) : by === 'group' ? [{ color: SGPAL[1], label: 'สีตามกลุ่มชุดดิน (คลิกดูรายละเอียด)' }, { color: '#bdbdbd', label: 'กลุ่ม 62 พื้นที่ลาดชันเชิงซ้อน' }]
+      : Object.entries(FERT).map(([k, c]) => ({ color: c, label: 'ความอุดมสมบูรณ์' + k })).concat([{ color: NA, label: 'ไม่ประเมิน (พื้นที่ลาดชัน/อื่นๆ)' }]);
+    return `<h4>🟤 ชุดดิน LDD 1:25,000 · ${by === 'ph' ? 'ปฏิกิริยาดินบน' : by === 'group' ? 'กลุ่มชุดดิน' : 'ความอุดมสมบูรณ์ดินบน'}</h4>${legendClasses(items)}${window.KPP_SOILSERIES ? '' : '<div class="hint">กำลังโหลด…</div>'}<div class="hint">คลิกพื้นที่เพื่อดูชุดดิน</div>`;
   }
 
   /* ---------- Layer 2: CMD — รายงานจริงรายอำเภอ (จุดสรุป) ---------- */
@@ -718,6 +770,7 @@ KPP.Map = (function () {
     if (L_.soil.on && window.KPP_LDD && !custom.some((c) => c.role === 'soil')) {
       h.push(`<h4>🟫 ความเหมาะสมดินมันสำปะหลัง</h4>${legendClasses(C.SOIL_CLASSES.map((s) => ({ color: s.color, label: s.label })))}<div class="lg-src"><span class="badge src-real" title="${U.esc(C.SOURCES.LDD.note)}">LDD Agri-Map 2564</span></div><div class="hint">คลิกบนแผนที่เพื่อดูชั้นดิน</div>`);
     }
+    if (L_.series.on) h.push(seriesLegend());
     if (L_.disease.on && DA.D.rep.cmd && S.year === 2569) {
       h.push(`<h4>🦠 โรคใบด่างรายอำเภอ <span class="badge src-real">รายงานจริง</span></h4><div class="hint" style="margin:0">ขนาด = พื้นที่ระบาด · ตัวเลข = % ของพื้นที่ปลูก</div>`);
       DA.LV4.slice().reverse().forEach((l) => h.push(`<div class="lg-row"><span class="sw" style="background:${l.color};border-radius:50%"></span>${l.icon} ${l.label}</div>`));
