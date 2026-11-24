@@ -19,7 +19,7 @@ KPP.U = (function () {
     if (a >= 1e4) return nf1.format(v / 1e3) + ' พัน';
     return nfInt.format(v);
   }
-  const pct = (v, d = 1) => (isNum(v) ? (d === 1 ? nf1 : nf2).format(v * 100) + '%' : '–');
+  const pct = (v, d = 1) => (isNum(v) ? (d === 0 ? nfInt : d === 1 ? nf1 : nf2).format(v * 100) + '%' : '–');   // d = 0 ปัดเป็นจำนวนเต็ม
 
   /** ผลผลิตเฉลี่ย กก./ไร่ = ผลผลิต(ตัน) ÷ เนื้อที่เก็บเกี่ยว(ไร่) × 1,000 */
   const yieldKgPerRai = (prodTon, harvRai) => {

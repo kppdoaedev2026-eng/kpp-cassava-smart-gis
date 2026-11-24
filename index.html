@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cassava Smart GIS กำแพงเพชร</title>
-<meta name="description" content="ระบบแผนที่อัจฉริยะและแดชบอร์ดบริหารจัดการมันสำปะหลังจังหวัดกำแพงเพชร สำนักงานเกษตรจังหวัดกำแพงเพชร กรมส่งเสริมการเกษตร">
+<title>ระบบส่งเสริมและจัดการมันสำปะหลังจังหวัดกำแพงเพชร</title>
+<meta name="description" content="ระบบส่งเสริมและจัดการมันสำปะหลังจังหวัดกำแพงเพชร — รายงานสถานการณ์การผลิต ผลผลิต พันธุ์ และโรค สำนักงานเกษตรจังหวัดกำแพงเพชร กรมส่งเสริมการเกษตร">
 <link rel="icon" href="assets/img/logo-doae.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700&family=Sarabun:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="vendor/leaflet.css">
 <link rel="stylesheet" href="vendor/MarkerCluster.css">
-<link rel="stylesheet" href="css/app.css?v=4.0.1">
+<link rel="stylesheet" href="css/app.css?v=4.4.0">
 </head>
 <body>
 <div id="app">
@@ -19,8 +19,8 @@
       <img class="logo" src="assets/img/logo-doae.png" alt="ตรากรมส่งเสริมการเกษตร" width="46" height="48">
       <img class="logo" src="assets/img/seal-kpp.png" alt="ตราจังหวัดกำแพงเพชร" width="46" height="46">
       <div class="brand-text">
-        <h1>ระบบแผนที่อัจฉริยะมันสำปะหลัง จังหวัดกำแพงเพชร</h1>
-        <p>Kamphaeng Phet Cassava Smart GIS · สำนักงานเกษตรจังหวัดกำแพงเพชร · <span id="asof"></span></p>
+        <h1>ระบบส่งเสริมและจัดการมันสำปะหลัง จังหวัดกำแพงเพชร</h1>
+        <p>สถานการณ์การผลิต · ผลผลิต · พันธุ์ · โรค · สำนักงานเกษตรจังหวัดกำแพงเพชร · <span id="asof"></span></p>
       </div>
     </div>
     <div class="actions">
@@ -59,8 +59,6 @@
     </div>
   </nav>
 
-  <section class="kpis" id="kpis" aria-label="ตัวชี้วัดหลัก"></section>
-
   <main class="main">
     <section class="map-wrap">
       <div id="map" role="application" aria-label="แผนที่"></div>
@@ -75,7 +73,10 @@
         <div class="lp-body" id="lpBody"></div>
       </aside>
       <div class="legend" id="legend"></div>
+      <button class="to-summary" id="btnToSummary" type="button" title="ซูมแผนที่ด้วยล้อเมาส์: คลิกแผนที่ก่อน หรือกด Ctrl ค้างไว้">▼ บทสรุปและข้อมูล</button>
     </section>
+
+    <section class="kpis" id="kpis" aria-label="ตัวชี้วัดหลัก"></section>
 
     <section class="side" id="side">
       <nav class="tabs" role="tablist" id="sideTabs"></nav>
@@ -170,7 +171,7 @@
         <div class="var-head">
           <div>
             <h3>การจัดกลุ่มพันธุ์มันสำปะหลังต่อโรคใบด่าง</h3>
-            <p class="hint">ต้านทาน · ทนทาน · ค่อนข้างอ่อนแอ (ค่าเริ่มต้นของพันธุ์อื่นๆ) · อ่อนแอ (รวมพันธุ์ไม่รับรอง/ไม่ระบุ) — ชื่อพันธุ์จับคู่อัตโนมัติ เช่น KU50 = เกษตรศาสตร์ 50, CMR 89 = พันธุ์ 89</p>
+            <p class="hint">ต้านทาน (อิทธิ 1–3) · ทนทาน (ห้วยบง 60, เกษตรศาสตร์ 50, ระยอง 72) · ทั่วไป (ค่าเริ่มต้นของพันธุ์อื่นๆ) · อ่อนแอ (รวมพันธุ์ไม่รับรอง/ไม่ระบุ) — ชื่อพันธุ์จับคู่อัตโนมัติ เช่น KU50 = เกษตรศาสตร์ 50, CMR 89 = พันธุ์ 89</p>
           </div>
           <div class="add-var">
             <input type="text" id="newVarName" placeholder="ชื่อพันธุ์ใหม่ เช่น อิทธิ 4">
@@ -218,22 +219,22 @@
 <script src="vendor/proj4.js"></script>
 <script src="vendor/html2canvas.min.js"></script>
 <script src="vendor/jspdf.umd.min.js"></script>
-<script src="data/geo.js?v=4.0.1"></script>
-<script src="data/stats.js?v=4.0.1"></script>
-<script src="data/parcels.js?v=4.0.1"></script>
+<script src="data/geo.js?v=4.4.0"></script>
+<script src="data/stats.js?v=4.4.0"></script>
+<script src="data/parcels.js?v=4.4.0"></script>
 <script>/* ข้อมูลรายแปลงละเอียดใช้เฉพาะเครื่องภายใน (data/private/ ไม่ถูกเผยแพร่) */
-  if (location.protocol === 'file:' || /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) document.write('<script src="data/private/parcels.js?v=4.0.1" onerror="this.remove()"><\/script>');</script>
-<script src="data/networks.js?v=4.0.1"></script>
-<script src="data/flood.js?v=4.0.1"></script>
-<script src="data/ldd_soil.js?v=4.0.1"></script>
-<script src="data/reports.js?v=4.0.1"></script>
-<script src="js/config.js?v=4.0.1"></script>
-<script src="js/utils.js?v=4.0.1"></script>
-<script src="js/data.js?v=4.0.1"></script>
-<script src="js/map.js?v=4.0.1"></script>
-<script src="js/charts.js?v=4.0.1"></script>
-<script src="js/importer.js?v=4.0.1"></script>
-<script src="js/exporter.js?v=4.0.1"></script>
-<script src="js/app.js?v=4.0.1"></script>
+  if (location.protocol === 'file:' || /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) document.write('<script src="data/private/parcels.js?v=4.4.0" onerror="this.remove()"><\/script>');</script>
+<script src="data/networks.js?v=4.4.0"></script>
+<script src="data/flood.js?v=4.4.0"></script>
+<script src="data/ldd_soil.js?v=4.4.0"></script>
+<script src="data/reports.js?v=4.4.0"></script>
+<script src="js/config.js?v=4.4.0"></script>
+<script src="js/utils.js?v=4.4.0"></script>
+<script src="js/data.js?v=4.4.0"></script>
+<script src="js/map.js?v=4.4.0"></script>
+<script src="js/charts.js?v=4.4.0"></script>
+<script src="js/importer.js?v=4.4.0"></script>
+<script src="js/exporter.js?v=4.4.0"></script>
+<script src="js/app.js?v=4.4.0"></script>
 </body>
 </html>

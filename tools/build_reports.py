@@ -3,6 +3,8 @@
   1) ทะเบียนเกษตรกรมันสำปะหลัง (ระบบฐานข้อมูลทะเบียนเกษตรกรกลาง กสก.) รายอำเภอ/ตำบล
   2) รายงานสถานการณ์การระบาดโรคใบด่างมันสำปะหลัง (รายสัปดาห์) รายอำเภอ
   3) แปลงส่งเสริมพันธุ์ต้านทาน-ทนทาน (CSV) -> รวมรายตำบล ตัดชื่อ/เบอร์โทร/รหัสแปลงออก
+  4) การสนับสนุนท่อนพันธุ์ (ทะเบียนการสนับสนุนพันธุ์.csv + รายชื่อรับท่อนพันธุ์อิทธิ) -> รวมรายโครงการ/ตำบล ไม่เก็บชื่อ/เบอร์โทร
+  5) สรุปสาธารณะจาก CassavaPlot Monitor (Apps Script ?api=public) -> ถ้าดึงไม่ได้ใช้ข้อมูลรอบก่อน
 python tools/build_reports.py"""
 import glob, json, os, re
 import openpyxl
@@ -119,7 +121,7 @@ cmd_history = [{'period': h['period'], 'start': h['start'], 'end': h['end'],
                 'districts': {c: {'standing': v['standing']['total']['rai'], 'cmd': v['now']['total']['rai'], 'farmers': v['now']['total']['farmers']} for c, v in h['districts'].items()}}
                for h in history]
 for h in cmd_history:
-    print('[2] ใบด่าง %s → %s: ระบาด %.0f / ยืนต้น %.0f ไร่ (%d ราย)' % (h['start'], h['end'], h['cmd'], h['standing'], h['farmers']))
+    print('[2] ใบด่าง %s → %s: ระบาด %.0f / ปลูก %.0f ไร่ (%d ราย)' % (h['start'], h['end'], h['cmd'], h['standing'], h['farmers']))
 
 # ---------- 3) Resistant / tolerant variety project plots ----------
 res = None
@@ -159,8 +161,108 @@ if f:
            'tambons': tam, 'total': tot}
     print('[3] แปลงพันธุ์ต้านทาน: %d แปลง %.1f ไร่ ใน %d ตำบล · ไม่พบตำบล %s' % (tot['plots'], tot['rai'], len(tam), sorted(unmatched)))
 
+# ---------- 4) การสนับสนุนท่อนพันธุ์ (โฟลเดอร์ "สนับสนุนพันธุ์มัน") — รวมรายโครงการ/ตำบล ไม่มีข้อมูลส่วนบุคคล ----------
+STALKS_PER_RAI = 400   # ต้นพันธุ์ (ลำ) ต่อไร่ ตามรายงานการสนับสนุนท่อนพันธุ์ จ.กำแพงเพชร
+
+
+def tcode_of(dc, name):
+    n = re.sub(r'\s', '', str(name or '')).replace('เเ', 'แ').replace('หินดาด', 'หินดาต')
+    return T_BY_D.get(dc, {}).get(n) if dc and n else None
+
+
+def dcode_fix(name):
+    return dcode_of(str(name or '').replace('พรานดระต่าย', 'พรานกระต่าย'))
+
+
+support = {'source': 'ทะเบียนการสนับสนุนท่อนพันธุ์มันสำปะหลัง จ.กำแพงเพชร (สนง.เกษตรจังหวัด) + รายชื่อรับท่อนพันธุ์อิทธิ โรงแป้งธนะวัฒน์ ปี 2569',
+           'stalks_per_rai': STALKS_PER_RAI, 'records': []}
+f = find(os.path.join('**', 'ทะเบียนการสนับสนุนพันธุ์*.csv'))
+if f:
+    df = pd.read_csv(f[-1], dtype=str, encoding='utf-8-sig').fillna('')
+    for r in df.to_dict('records'):
+        dc = dcode_fix(r['อำเภอ']) if r['อำเภอ'].strip() else None
+        stalks = num(r['ต้นพันธุ์ (ลำ)']); rai = num(r['พื้นที่ (ไร่)'])
+        qty = bool(stalks or rai)            # ไม่ระบุทั้งลำและไร่ -> นับเฉพาะจำนวนเกษตรกร
+        if not rai: rai = stalks / STALKS_PER_RAI
+        if not stalks: stalks = rai * STALKS_PER_RAI
+        rec = {'year': int(num(r['ปี'])) or None, 'project': r['โครงการ'].strip(), 'd': dc, 't': tcode_of(dc, r['ตำบล']),
+               'variety': r['พันธุ์'].strip(), 'farmers': int(num(r['เกษตรกร (ราย)'])) or None, 'plots': int(num(r['แปลง'])) or None,
+               'rai': round(rai, 2), 'stalks': round(stalks), 'note': r['หมายเหตุ'].strip()}
+        if not qty: rec['noqty'] = True
+        support['records'].append(rec)
+        if r['อำเภอ'].strip() and not dc:
+            print('   [4] ไม่พบอำเภอ', r['อำเภอ'])
+f = find(os.path.join('**', '*รับท่อนพันธุ์อิทธิ*.xlsx'))
+for path in f:
+    ws = openpyxl.load_workbook(path, data_only=True).active
+    agg = {}
+    for r in ws.iter_rows(min_row=3, values_only=True):
+        if not str(r[0] or '').strip().isdigit():
+            continue
+        dc = dcode_fix(r[7]); tc = tcode_of(dc, r[6])
+        a = agg.setdefault((dc, tc), {'farmers': 0, 'อิทธิ 1': 0, 'อิทธิ 2': 0, 'อิทธิ 3': 0})
+        a['farmers'] += 1
+        for k, c in (('อิทธิ 1', 11), ('อิทธิ 2', 12), ('อิทธิ 3', 13)):
+            a[k] += num(r[c])
+    for (dc, tc), a in sorted(agg.items(), key=lambda x: str(x[0])):
+        stalks = a['อิทธิ 1'] + a['อิทธิ 2'] + a['อิทธิ 3']
+        support['records'].append({'year': 2569, 'project': 'โรงแป้งธนะวัฒน์ สนับสนุนท่อนพันธุ์อิทธิ 1–3 ปี 2569', 'd': dc, 't': tc,
+                                   'variety': 'คละพันธุ์อิทธิ 1–3', 'farmers': a['farmers'], 'plots': None, 'rai': round(stalks / STALKS_PER_RAI, 2),
+                                   'stalks': round(stalks), 'note': ' · '.join('%s %s ลำ' % (k, format(round(a[k]), ',')) for k in ('อิทธิ 1', 'อิทธิ 2', 'อิทธิ 3') if a[k])})
+        if not tc:
+            print('   [4] ไม่พบตำบล (ธนะวัฒน์)', dc, a['farmers'], 'ราย')
+# Sanyu project (AFDG) — แปลงสาธิต (Type = Demo) รายละ อิทธิ 1, 2, 3 · ไม่นับแถว Monitor (ยืนยันโดยเจ้าของ: 3 ราย)
+for path in find(os.path.join('**', '*Sanyu project*.xlsx')):
+    ws = openpyxl.load_workbook(path, data_only=True).active
+    agg = {}
+    for r in ws.iter_rows(min_row=2, values_only=True):
+        if str(r[1] or '').strip().lower() != 'demo':
+            continue
+        addr = str(r[6] or '')
+        mt, md = re.search(r'ต\.\s*(\S+)', addr), re.search(r'อ\.\s*(\S+)', addr)
+        dn = md.group(1) if md else ''
+        dc = dcode_fix('เมืองกำแพงเพชร' if dn in ('เมือง', 'เมืองกำแพงเพชร') else dn)
+        tc = tcode_of(dc, mt.group(1) if mt else '')
+        a = agg.setdefault((dc, tc), {'farmers': 0, 'rai': 0.0})
+        a['farmers'] += 1; a['rai'] += num(r[3])
+    yy = re.search(r'(\d{2})(\d{2})(\d{2})\s', os.path.basename(path))
+    for (dc, tc), a in agg.items():
+        support['records'].append({'year': 2500 + int(yy.group(1)) + 43 if yy else 2569, 'project': 'Sanyu project (AFDG) แปลงสาธิต — สนับสนุนอิทธิ 1, 2, 3', 'd': dc, 't': tc,
+                                   'variety': 'คละพันธุ์อิทธิ 1–3', 'farmers': a['farmers'], 'plots': a['farmers'], 'rai': round(a['rai'], 2),
+                                   'stalks': round(a['rai'] * STALKS_PER_RAI), 'note': 'ต้นพันธุ์คำนวณ %d ลำ/ไร่' % STALKS_PER_RAI})
+        if not tc:
+            print('   [4] ไม่พบตำบล (Sanyu)', dc)
+print('[4] สนับสนุนพันธุ์: %d รายการ · %.2f ไร่ · %s ลำ' % (len(support['records']), sum(x['rai'] for x in support['records']), format(sum(x['stalks'] for x in support['records']), ',')))
+if not support['records']:
+    support = None
+
+# ---------- 5) ระบบติดตามแปลงส่งเสริม CassavaPlot Monitor (Apps Script) — สรุปสาธารณะ ไม่มีข้อมูลส่วนบุคคล ----------
+cfg = open(os.path.join(ROOT, 'js', 'config.js'), encoding='utf-8').read()
+m = re.search(r"PLOT_MONITOR_URL:\s*'([^']+)'", cfg)
+plot_monitor = None
+try:
+    prev = open(OUT, encoding='utf-8').read()
+    plot_monitor = json.loads(prev[prev.index('=') + 1:].rstrip().rstrip(';')).get('plot_monitor')
+except Exception:
+    pass
+if m:
+    import urllib.request
+    try:
+        with urllib.request.urlopen(m.group(1) + '?api=public', timeout=60) as resp:
+            body = resp.read().decode('utf-8')
+        data = json.loads(body)
+        if data.get('ok'):
+            data['fetched_at'] = __import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M')
+            plot_monitor = data
+            s = data.get('summary') or {}
+            print('[5] CassavaPlot: %s แปลง · %s ไร่ (อัปเดต %s)' % (s.get('plotCount'), s.get('totalArea'), data.get('updatedAt')))
+        else:
+            print('   [5] CassavaPlot ตอบกลับไม่สำเร็จ:', data.get('error'), '— ใช้ข้อมูลเดิม')
+    except Exception as e:
+        print('   [5] ดึงข้อมูล CassavaPlot ไม่ได้ (ต้องติดตั้ง tools/apps_script_public_api.gs ก่อน):', str(e)[:80], '— ใช้ข้อมูลเดิม' if plot_monitor else '')
+
 with open(OUT, 'w', encoding='utf-8') as fo:
     fo.write('window.KPP_REPORTS=')
-    json.dump({'registry': reg, 'cmd': cmd, 'cmd_history': cmd_history, 'resist_plots': res}, fo, ensure_ascii=False, separators=(',', ':'))
+    json.dump({'registry': reg, 'cmd': cmd, 'cmd_history': cmd_history, 'resist_plots': res, 'support': support, 'plot_monitor': plot_monitor}, fo, ensure_ascii=False, separators=(',', ':'))
     fo.write(';\n')
 print('->', OUT, '%.0f KB' % (os.path.getsize(OUT) / 1024))

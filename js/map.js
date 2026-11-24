@@ -31,9 +31,9 @@ KPP.Map = (function () {
     production: { label: 'ผลผลิต (ตัน)', short: 'ผลผลิต', ramp: 'YlGn', q: true, get: (u) => u.production, fmt: (v) => U.fmt(v) },
     yield: { label: 'ผลผลิตเฉลี่ย (กก./ไร่)', short: 'ผลผลิตต่อไร่', ramp: 'YlGn', q: true, get: (u) => u.yield, fmt: (v) => U.fmt(v) },
     cmd: { label: 'พื้นที่ระบาดใบด่าง (ไร่)', short: 'พื้นที่ระบาด', ramp: 'YlOrRd', q: true, get: (u) => u.cmd, fmt: (v) => U.fmt(v), dist: true },
-    cmdPct: { label: 'สัดส่วนพื้นที่ระบาดใบด่าง (% พื้นที่ยืนต้น)', short: '% ระบาด', ramp: 'YlOrRd', breaks: [0.01, 0.05, 0.15, 0.30], get: (u) => u.cmdPct, fmt: pctF, dist: true },
-    coverage: { label: 'ความครอบคลุมทะเบียน (ทะเบียน ÷ พื้นที่ยืนต้น)', short: '% ทะเบียน', ramp: 'Blues', breaks: [0.5, 0.7, 0.9, 1.0], get: (u) => u.coverage, fmt: pctF, dist: true },
-    regGap: { label: 'พื้นที่ยืนต้นที่ยังไม่ขึ้นทะเบียน (ไร่)', short: 'ช่องว่างทะเบียน', ramp: 'YlOrBr', q: true, get: (u) => u.regGap, fmt: (v) => U.fmt(v), dist: true },
+    cmdPct: { label: 'สัดส่วนพื้นที่ระบาดใบด่าง (% พื้นที่ปลูก)', short: '% ระบาด', ramp: 'YlOrRd', breaks: [0.01, 0.05, 0.15, 0.30], get: (u) => u.cmdPct, fmt: pctF, dist: true },
+    coverage: { label: 'ความครอบคลุมทะเบียน (ทะเบียน ÷ พื้นที่ปลูก)', short: '% ทะเบียน', ramp: 'Blues', breaks: [0.5, 0.7, 0.9, 1.0], get: (u) => u.coverage, fmt: pctF, dist: true },
+    regGap: { label: 'พื้นที่ปลูกที่ยังไม่ขึ้นทะเบียน (ไร่)', short: 'ช่องว่างทะเบียน', ramp: 'YlOrBr', q: true, get: (u) => u.regGap, fmt: (v) => U.fmt(v), dist: true },
     resist: { label: 'พื้นที่พันธุ์ต้านทาน+ทนทาน (ไร่)', short: 'ต้านทาน+ทนทาน', ramp: 'BuGn', q: true, get: (u) => u.resist, fmt: (v) => U.fmt(v) },
     resistPct: { label: 'สัดส่วนพันธุ์ต้านทาน+ทนทาน', short: '% ต้านทาน+ทนทาน', ramp: 'BuGn', breaks: [0.01, 0.03, 0.05, 0.1], get: (u) => u.resistPct, fmt: pctF },
     cmdIndex: { label: 'ดัชนีความเร่งด่วนจัดการโรคใบด่าง (0–100)', short: 'ดัชนีจัดการ', level: 'cmdLevel', breaksTxt: ['< 20', '20–39', '40–59', '≥ 60'], get: (u) => u.cmdIndex, fmt: (v) => U.fmt(v) },
@@ -63,7 +63,15 @@ KPP.Map = (function () {
     L.Popup.prototype.options.autoPanPaddingTopLeft = L.point(16, 70);
     L.Popup.prototype.options.autoPanPaddingBottomRight = L.point(16, 16);
     L.Popup.prototype.options.maxWidth = 340;
-    map = L.map('map', { zoomControl: true, attributionControl: true, zoomSnap: 0.25 }).setView(C.CENTER, C.ZOOM);
+    map = L.map('map', { zoomControl: true, attributionControl: true, zoomSnap: 0.25, scrollWheelZoom: false }).setView(C.CENTER, C.ZOOM);
+    // แผนที่เต็มหน้าจอ: ล้อเมาส์ใช้เลื่อนหน้าไปยังบทสรุป จนกว่าจะคลิกแผนที่ (หรือกด Ctrl ค้างไว้ขณะหมุนล้อ)
+    map.on('click focus', () => map.scrollWheelZoom.enable());
+    map.on('mouseout blur', () => map.scrollWheelZoom.disable());
+    map.getContainer().addEventListener('wheel', (e) => {
+      if (map.scrollWheelZoom.enabled() || !e.ctrlKey) return;
+      e.preventDefault();
+      map.setZoomAround(map.mouseEventToContainerPoint(e), map.getZoom() + (e.deltaY < 0 ? 0.5 : -0.5));
+    }, { passive: false });
     [['choro', 380], ['soil', 390], ['flood', 400], ['outline', 420], ['parcels', 430], ['heat', 440], ['labels', 650]].forEach(([n, z]) => { map.createPane(n).style.zIndex = z; });
     map.getPane('labels').style.pointerEvents = 'none';
     map.getPane('heat').style.pointerEvents = 'none';
@@ -291,10 +299,10 @@ KPP.Map = (function () {
     if (!u) return '<b>' + U.esc(name) + '</b>';
     const m = METRICS[L_.choro.metric];
     const rows = [[m.label, m.fmt(m.get(u))]];
-    if (module === 'cmd') rows.push(['พื้นที่ยืนต้น / ทะเบียน', `${U.fmt(u.standing)} / ${U.fmt(u.planted)} ไร่`], ['ระบาดใบด่าง', U.isNum(u.cmd) ? `${U.fmt(u.cmd)} ไร่ (${U.pct(u.cmdPct)})${u.cmdFarmers ? ' · ' + U.fmt(u.cmdFarmers) + ' ราย' : ''}` : 'ยังไม่มีผลสำรวจรายตำบล'], ['แปลงส่งเสริมพันธุ์', u.projPlots ? `${u.projPlots} แปลง · ${U.fmt(u.projRai, 1)} ไร่` : '–'], ['ต้านทาน / ทนทาน', `${U.fmt(u.resistant)} / ${U.fmt(u.tolerant)} ไร่`], ['ทั่วไป / อ่อนแอ', `${U.fmt(u.general)} / ${U.fmt(u.susceptible)} ไร่`], ['ระดับการจัดการ', lvl(u.cmdLevel)]);
+    if (module === 'cmd') rows.push(['พื้นที่ปลูก / ทะเบียน', `${U.fmt(u.standing)} / ${U.fmt(u.planted)} ไร่`], ['ระบาดใบด่าง', U.isNum(u.cmd) ? `${U.fmt(u.cmd)} ไร่ (${U.pct(u.cmdPct)})${u.cmdFarmers ? ' · ' + U.fmt(u.cmdFarmers) + ' ราย' : ''}` : 'ยังไม่มีผลสำรวจรายตำบล'], ['แปลงส่งเสริมพันธุ์', u.projPlots ? `${u.projPlots} แปลง · ${U.fmt(u.projRai, 1)} ไร่` : '–'], ['ต้านทาน / ทนทาน', `${U.fmt(u.resistant)} / ${U.fmt(u.tolerant)} ไร่`], ['ทั่วไป / อ่อนแอ', `${U.fmt(u.general)} / ${U.fmt(u.susceptible)} ไร่`], ['ระดับการจัดการ', lvl(u.cmdLevel)]);
     else if (module === 'rootrot') rows.push(['พื้นที่ปลูก (ทะเบียน)', U.fmt(u.regPlanted) + ' ไร่'], ['ระดับความเสี่ยง', lvl(u.rrLevel)], ['ปัจจัย น้ำท่วม/ดิน/ฤดูฝน', u.rrParts ? `${U.fmt(u.rrParts.flood)} / ${U.fmt(u.rrParts.soil)} / ${U.fmt(u.rrParts.rain)}` : '–'], ['ปลูกบนดิน S3+N', U.pct(u.soilPoorPct)], ['ปลูกช่วงฤดูฝน', U.pct(u.rainyPct)]);
     else if (module === 'soil') rows.push(['มันฯ บนดิน S1/S2', `${U.fmt(u.soil_S1)} / ${U.fmt(u.soil_S2)} ไร่`], ['มันฯ บนดิน S3/N', `${U.fmt(u.soil_S3)} / ${U.fmt(u.soil_N)} ไร่`], ['นอกพื้นที่ประเมิน', U.fmt(u.soil_none) + ' ไร่']);
-    else rows.push(['พื้นที่ปลูก (ทะเบียน)', U.fmt(u.planted) + ' ไร่' + (u.hh ? ` · ${U.fmt(u.hh)} ครัวเรือน` : '')], ['ผลผลิต', U.fmt(u.production) + ' ตัน'], ['ผลผลิตเฉลี่ย', U.fmt(u.yield) + ' กก./ไร่'], ['ระบาดใบด่าง', U.isNum(u.cmd) ? `${U.fmt(u.cmd)} ไร่ (${U.pct(u.cmdPct)})` : '–'], ['ทะเบียน/ยืนต้น', U.pct(u.coverage)], ['ต้านทาน+ทนทาน', `${U.fmt(u.resist)} ไร่ (${U.pct(u.resistPct)})`], ['ทับซ้อนน้ำท่วมซ้ำซาก', U.fmt(u.flood) + ' ไร่']);
+    else rows.push(['พื้นที่ปลูก (ทะเบียน)', U.fmt(u.planted) + ' ไร่' + (u.hh ? ` · ${U.fmt(u.hh)} ครัวเรือน` : '')], ['ผลผลิต', U.fmt(u.production) + ' ตัน'], ['ผลผลิตเฉลี่ย', U.fmt(u.yield) + ' กก./ไร่'], ['ระบาดใบด่าง', U.isNum(u.cmd) ? `${U.fmt(u.cmd)} ไร่ (${U.pct(u.cmdPct)})` : '–'], ['ทะเบียน/พื้นที่ปลูก', U.pct(u.coverage)], ['ต้านทาน+ทนทาน', `${U.fmt(u.resist)} ไร่ (${U.pct(u.resistPct)})`], ['ทับซ้อนน้ำท่วมซ้ำซาก', U.fmt(u.flood) + ' ไร่']);
     return `<div class="pp"><h4>${isTambon ? 'ต.' : 'อ.'}${U.esc(name)}${dn ? ' <small>อ.' + U.esc(dn) + '</small>' : ''}</h4><table>${rows.map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join('')}</table>
       <div class="hint">${(module === 'cmd' || module === 'overview') && u.src.disease ? 'ใบด่าง: ' + (C.SOURCES[u.src.disease] || {}).label + ' · ' : ''}% พันธุ์คิดจากผังแปลงดิจิทัล · คลิกเพื่อเจาะลึก</div></div>`;
   }
@@ -442,7 +450,7 @@ KPP.Map = (function () {
     return `<div class="pp"><h4>🦠 อ.${U.esc(DA.D.dByCode[dc].name)} · โรคใบด่าง</h4><table>
       <tr><td>พื้นที่ระบาด</td><td><b>${U.fmt(d.now.total.rai)}</b> ไร่ (${U.pct(U.safeDiv(d.now.total.rai, d.standing.total.rai))})</td></tr>
       <tr><td>เกษตรกรได้รับผลกระทบ</td><td>${U.fmt(d.now.total.farmers)} ราย</td></tr>
-      <tr><td>พื้นที่ยืนต้น</td><td>${U.fmt(d.standing.total.rai)} ไร่</td></tr>
+      <tr><td>พื้นที่ปลูก</td><td>${U.fmt(d.standing.total.rai)} ไร่</td></tr>
       ${ages.map(([k, l]) => `<tr><td>อายุ ${l}</td><td>${U.fmt(d.now[k].rai)} ไร่</td></tr>`).join('')}
       <tr><td>เทียบรอบก่อน</td><td>${diff === null ? (d.trend ? U.esc(d.trend) : '–') : (diff > 0 ? '▲ +' : diff < 0 ? '▼ ' : '') + U.fmt(diff) + ' ไร่'}</td></tr>
       <tr><td>ตรวจสอบแล้ว</td><td>${U.esc(d.checked || '–')}</td></tr></table>
@@ -711,7 +719,7 @@ KPP.Map = (function () {
       h.push(`<h4>🟫 ความเหมาะสมดินมันสำปะหลัง</h4>${legendClasses(C.SOIL_CLASSES.map((s) => ({ color: s.color, label: s.label })))}<div class="lg-src"><span class="badge src-real" title="${U.esc(C.SOURCES.LDD.note)}">LDD Agri-Map 2564</span></div><div class="hint">คลิกบนแผนที่เพื่อดูชั้นดิน</div>`);
     }
     if (L_.disease.on && DA.D.rep.cmd && S.year === 2569) {
-      h.push(`<h4>🦠 โรคใบด่างรายอำเภอ <span class="badge src-real">รายงานจริง</span></h4><div class="hint" style="margin:0">ขนาด = พื้นที่ระบาด · ตัวเลข = % ของพื้นที่ยืนต้น</div>`);
+      h.push(`<h4>🦠 โรคใบด่างรายอำเภอ <span class="badge src-real">รายงานจริง</span></h4><div class="hint" style="margin:0">ขนาด = พื้นที่ระบาด · ตัวเลข = % ของพื้นที่ปลูก</div>`);
       DA.LV4.slice().reverse().forEach((l) => h.push(`<div class="lg-row"><span class="sw" style="background:${l.color};border-radius:50%"></span>${l.icon} ${l.label}</div>`));
     }
     if (L_.resist.on) h.push(`<h4>🛡️ พันธุ์ต้านทาน/ทนทาน</h4><div class="lg-row"><span class="proj-icon" style="width:18px;height:18px;font-size:9px"><b>n</b></span>แปลงส่งเสริมพันธุ์ (จำนวนแปลง/ตำบล)</div><div class="lg-row"><span class="sw" style="background:${VCOL.resistant};border-radius:50%"></span>ต้านทาน</div><div class="lg-row"><span class="sw" style="background:${VCOL.tolerant};border-radius:50%"></span>ทนทาน</div>`);

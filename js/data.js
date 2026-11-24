@@ -46,6 +46,8 @@ KPP.Data = (function () {
       if (saved.varietyMap) Object.entries(saved.varietyMap).forEach(([k, v]) => { D.settings.varietyMap[k] = LEGACY[v] || v; });
       if (Array.isArray(saved.extraVarieties)) D.settings.extraVarieties = saved.extraVarieties;
       if (U.isNum(saved.price)) D.settings.price = saved.price;
+      const def = defaultVarietyMap();
+      for (let v = (saved.ver || 1) + 1; v <= C.VARIETY_DEFAULTS_VER; v++) (C.VARIETY_DEFAULTS_CHANGED[v] || []).forEach((n) => { D.settings.varietyMap[canon(n)] = def[canon(n)] || C.VARIETY_DEFAULT_CLASS; });
     }
 
     G.districts.features.forEach((f) => {
@@ -389,7 +391,7 @@ KPP.Data = (function () {
     return LV4[v >= br[2] ? 3 : v >= br[1] ? 2 : v >= br[0] ? 1 : 0];
   }
 
-  const CMD_BREAKS = [0.05, 0.15, 0.30];   // สัดส่วนพื้นที่ระบาดต่อพื้นที่ยืนต้น: ต่ำ / ปานกลาง / สูง / วิกฤต
+  const CMD_BREAKS = [0.05, 0.15, 0.30];   // สัดส่วนพื้นที่ระบาดต่อพื้นที่ปลูก: ต่ำ / ปานกลาง / สูง / วิกฤต
   function severity(p) { return level4(U.isNum(p) ? p * 100 : null, CMD_BREAKS.map((b) => b * 100)); }
 
   function yoy(year, f) {
@@ -469,7 +471,7 @@ KPP.Data = (function () {
       else {
         if (!U.isNum(u.cmd) && u.code.length === 6) acts.push('ยังไม่มีผลสำรวจใบด่างรายตำบล — ให้อำเภอส่งแบบสำรวจรายตำบลผ่านระบบ');
         if ((u.cmdPct || 0) >= 0.05) acts.push(`ระบาด ${U.pct(u.cmdPct)}: ตั้งจุดตรวจ/ถอนทำลายต้นเป็นโรค ห้ามเคลื่อนย้ายท่อนพันธุ์ออกนอกพื้นที่`);
-        if ((u.susceptiblePct || 0) >= 0.2) acts.push(`พันธุ์อ่อนแอ ${U.pct(u.susceptiblePct)} (${U.fmt(u.susceptible)} ไร่ในผังแปลง): เร่งทดแทนด้วยพันธุ์ต้านทานอิทธิ 1–3 / ทนทานห้วยบง 60, เกษตรศาสตร์ 50`);
+        if ((u.susceptiblePct || 0) >= 0.2) acts.push(`พันธุ์อ่อนแอ ${U.pct(u.susceptiblePct)} (${U.fmt(u.susceptible)} ไร่ในผังแปลง): เร่งทดแทนด้วยพันธุ์ต้านทานอิทธิ 1–3 / ทนทานห้วยบง 60, เกษตรศาสตร์ 50, ระยอง 72`);
         if ((u.resistPct || 0) < 0.1) acts.push(`พันธุ์ต้านทาน+ทนทานเพียง ${U.pct(u.resistPct)}: ตั้งแปลงขยายท่อนพันธุ์สะอาดผ่าน ${np ? np.row.name : 'ศจช.'}${np ? ' (' + U.fmt(np.km, 1) + ' กม.)' : ''}`);
         if (!acts.length) acts.push('สถานการณ์ควบคุมได้ — รักษาสัดส่วนพันธุ์ต้านทาน และสำรวจแมลงหวี่ขาวต่อเนื่อง');
       }
@@ -530,7 +532,7 @@ KPP.Data = (function () {
   }
   function resetVarieties() { D.settings.varietyMap = defaultVarietyMap(); D.settings.extraVarieties = []; }
   function saveSettings() {
-    U.store('kpp.settings.v2', D.settings);
+    U.store('kpp.settings.v2', Object.assign({ ver: C.VARIETY_DEFAULTS_VER }, D.settings));
     rebuild();
   }
 
