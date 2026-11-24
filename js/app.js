@@ -26,6 +26,7 @@ KPP.App = (function () {
     $('layerPanel').classList.add('collapsed');
     update(true);
     loadPlotMonitor();
+    KPP.Admin.init();
     // แผนที่เต็มจอ: ถ้ากรอบแผนที่ยังไม่มีขนาดตอนเริ่ม (เช่น หน้าต่างอยู่เบื้องหลัง) ให้ปรับขนาดและจัดมุมมองใหม่เมื่อได้ขนาดจริง
     if (window.ResizeObserver) {
       let w0 = M.map.getSize().x, h0 = M.map.getSize().y;
@@ -72,6 +73,7 @@ KPP.App = (function () {
   function setModule(m, silent) {
     state.module = m;
     if (m === 'rootrot' || m === 'soil') state.year = 2569;
+    if (m === 'prod' && state.year === 2569) state.year = lastOfficialYear();   // สถิติผลผลิตทางการมีถึงปีล่าสุดที่มีข้อมูล
     U.store('kpp.module', m);
     M.setModule(m);
     renderLayerPanel();
@@ -115,6 +117,8 @@ KPP.App = (function () {
         + (reg2569 && U.isNum(a.coverage) ? card('#2a78d6', 'ความครอบคลุมทะเบียน', U.pct(a.coverage, 0), '', `ทะเบียน ${U.fmt(a.planted)} / ปลูก ${U.fmt(a.standing)} ไร่ · ยังไม่ขึ้นทะเบียน ${U.fmt(a.regGap)} ไร่${bar(Math.min(1, a.coverage), '#2a78d6')}`, 'REGISTRY') : '')
         + card('#1a7f37', 'พันธุ์ต้านทาน + ทนทาน', U.fmt(a.resist), 'ไร่', U.isNum(a.resist) ? `<b>${U.pct(a.resistPct)}</b> ของผังแปลง · ต้านทาน ${U.fmt(a.resistant)} · ทนทาน ${U.fmt(a.tolerant)}${bar(a.resistPct / 0.3, '#1a7f37')}` : 'มีข้อมูลรายพันธุ์เฉพาะปี 2569', a.src.resist)
         + (U.isNum(a.flood) ? card('var(--flood)', 'ทับซ้อนน้ำท่วมซ้ำซาก', U.fmt(a.flood), 'ไร่', `${U.pct(a.floodPct)} ของผังแปลง · มูลค่าผลผลิตเสี่ยง ≈ <b>${U.fmtCompact(a.lossValue)}</b> บาท`, a.src.flood) : '');
+    } else if (state.module === 'prod') {
+      h = prodKPIs();
     } else if (state.module === 'cmd') {
       const rp = DA.D.rep.resist_plots;
       h = card('#2a78d6', 'พื้นที่ปลูก (รายงานโรค)', U.fmt(a.standing ?? a.planted), 'ไร่', `${a.standingFarmers ? U.fmt(a.standingFarmers) + ' ราย · ' : ''}ทะเบียน ${U.fmt(a.planted)} ไร่`, a.src.disease || a.src.area)
@@ -331,6 +335,13 @@ KPP.App = (function () {
         { id: 'risk', label: 'ตารางความเสี่ยง', html: riskTableHtml },
         { id: 'insight', label: 'ข้อเสนอแนะ', html: insightsHtml },
         { id: 'status', label: 'สถานะข้อมูล', html: statusHtml }
+      ]
+    },
+    prod: {
+      tabs: [
+        { id: 'dash', label: 'แดชบอร์ดการผลิต', html: prodDashHtml, after: () => CH.prod(state, prodSeries(state.district), prodCal(state.district)) },
+        { id: 'tbl', label: 'ตารางรายอำเภอ', html: prodTableHtml },
+        { id: 'price', label: 'ราคา & มูลค่า', html: prodPriceHtml }
       ]
     },
     cmd: {
@@ -713,6 +724,86 @@ KPP.App = (function () {
         <li>พื้นที่ดินความอุดมสมบูรณ์ต่ำ: เพิ่มอินทรียวัตถุ (ปุ๋ยหมัก/ปุ๋ยพืชสด) ผ่าน ศดปช. และสารเร่ง พด. ของกรมพัฒนาที่ดิน</li>
         <li>เปิดชั้น "ชุดดิน 1:25,000" ในแผงชั้นข้อมูล แล้วคลิกบนแผนที่เพื่อดูชุดดินแต่ละจุด</li></ul></div>
       <p class="note">ที่มา: ${U.esc(SS.source)} · ${U.esc(SS.note)} · ตำแหน่งแปลง = จุดศูนย์กลางแปลงในผังแปลงดิจิทัล</p>`);
+  }
+
+  /* ---------- สถานการณ์การผลิต: สถิติทางการรายปี + ทะเบียน 2569 + ปฏิทินการผลิตจากผังแปลง + ราคา ---------- */
+  function prodSeries(dcode) {
+    const yrs = Object.keys(DA.D.official).map(Number).sort((a, b) => a - b);
+    const out = yrs.map((y) => {
+      const rows = Object.entries(DA.D.official[y]).filter(([c]) => !dcode || c === dcode).map(([, r]) => r);
+      const s = (k) => rows.reduce((a, r) => a + (r[k] || 0), 0);
+      const o = { year: y, planted: s('planted'), harvested: s('harvested'), production: s('production') };
+      o.yield = U.yieldKgPerRai(o.production, o.harvested);
+      return o;
+    });
+    const last3 = out.slice(-3), h3 = last3.reduce((a, r) => a + r.harvested, 0), p3 = last3.reduce((a, r) => a + r.production, 0);
+    const ref = U.yieldKgPerRai(p3, h3), ymin = Math.min(...last3.map((r) => r.yield)), ymax = Math.max(...last3.map((r) => r.yield));
+    const reg = DA.D.rep.registry, rr = reg ? (dcode ? reg.districts[dcode] : reg.province) : null;
+    if (rr) out.push({ year: 2569, reg: true, est: true, planted: rr.rai, harvested: rr.remain, production: rr.remain * ref / 1000, yield: null,
+      prodLo: rr.remain * ymin / 1000, prodHi: rr.remain * ymax / 1000, refYield: ref, refYears: last3.map((r) => r.year) });
+    return out;
+  }
+  function prodCal(dcode) {
+    const T = TR(); if (!T || !T.harvest_month) return null;
+    const yrs = Object.keys(T.years).map(Number).filter((y) => T.years[y].comparable).sort();
+    const y = yrs.includes(state.year) ? state.year : yrs[yrs.length - 1];
+    const pick = (rows) => { const m = Array(12).fill(0); rows.forEach(([yy, dc, mo, , rai]) => { if (yy === y && (!dcode || dc === dcode)) m[mo - 1] += rai; }); const t = m.reduce((a, b) => a + b, 0); return t ? m.map((v) => 100 * v / t) : m; };
+    const bins = ['5-8', '8-10', '10-12', '12-14', '14+'], gb = {}; let gt = 0;
+    T.growth.rows.forEach(([yy, dc, b, , rai]) => { if (yy === y && (!dcode || dc === dcode)) { gb[b] = (gb[b] || 0) + rai; gt += rai; } });
+    const plant = pick(T.plant_month.rows), harvest = pick(T.harvest_month.rows);
+    const peak = (arr) => arr.indexOf(Math.max(...arr));
+    return { year: y, plant, harvest, growth: bins.map((b) => (gt ? 100 * (gb[b] || 0) / gt : 0)), growthLabels: bins.map((b) => b + ' เดือน'),
+      median: T.growth.median_months[y], plantPeak: peak(plant), harvPeak: peak(harvest) };
+  }
+  const latestPrice = () => (C.PRICES || []).slice().sort((a, b) => (a.date < b.date ? 1 : -1))[0] || null;
+  const MON = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+  const thDate = (iso) => (iso ? new Date(iso).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) : '–');
+
+  function prodKPIs() {
+    const ser = prodSeries(state.district), off = ser.filter((r) => !r.reg), L = off[off.length - 1], Pv = off[off.length - 2];
+    const e = ser.find((r) => r.reg), pr = latestPrice(), cal = prodCal(state.district);
+    const d = (a, b) => (U.isNum(a) && U.isNum(b) && b ? `<span class="delta ${a >= b ? 'up' : 'down'}">${a >= b ? '▲ +' : '▼ '}${U.pct((a - b) / b)}</span> จากปี ${Pv.year}` : '');
+    const mean = off.reduce((a, r) => a + (r.yield || 0), 0) / off.length;
+    return card('var(--brand)', `พื้นที่ปลูก ปี ${L.year}`, U.fmt(L.planted), 'ไร่', `เก็บเกี่ยว ${U.fmt(L.harvested)} ไร่ · ${d(L.planted, Pv.planted)}`, 'OFFICIAL')
+      + card('var(--gold)', `ผลผลิต ปี ${L.year}`, U.fmt(L.production), 'ตัน', d(L.production, Pv.production), 'OFFICIAL')
+      + card('#1a7f37', 'ผลผลิตต่อไร่', U.fmt(L.yield), 'กก./ไร่', `เฉลี่ย ${off.length} ปี ${U.fmt(mean)} กก./ไร่ · ${d(L.yield, Pv.yield)}`, 'OFFICIAL')
+      + (pr ? card('#6250d6', 'ราคาหัวมันสด', pr.price.toFixed(2), 'บาท/กก.', `${U.esc(pr.place)} · ${thDate(pr.date)} · มูลค่าผลผลิตปี ${L.year} ≈ <b>${U.fmtCompact(L.production * 1000 * pr.price)}</b> บาท (ราคานี้)`, 'PRICE') : '')
+      + (e ? card('#2a78d6', 'ประมาณการผลผลิต 2569', U.fmt(e.production), 'ตัน', `พื้นที่คงเหลือขึ้นทะเบียน ${U.fmt(e.harvested)} ไร่ × ${U.fmt(e.refYield)} กก./ไร่ (เฉลี่ย ${e.refYears.join('–')}) · ช่วง ${U.fmtCompact(e.prodLo)}–${U.fmtCompact(e.prodHi)} ตัน`, 'PROJECTED') : '')
+      + (cal ? card('#0f766e', 'ฤดูการผลิต (ผังแปลง)', MON[cal.plantPeak] + ' → ' + MON[cal.harvPeak], '', `ปลูกมากสุด ${MON[cal.plantPeak]} ${cal.plant[cal.plantPeak].toFixed(0)}% · เก็บเกี่ยวมากสุด ${MON[cal.harvPeak]} ${cal.harvest[cal.harvPeak].toFixed(0)}% · อายุกลาง ${cal.median} เดือน (ปี ${cal.year})`, 'PARCELALL') : '');
+  }
+
+  function prodDashHtml() {
+    const cal = prodCal(state.district);
+    return card2(`พื้นที่ปลูก ผลผลิต ${state.district ? '· อ.' + U.esc(DA.D.dByCode[state.district].name) : '· จ.กำแพงเพชร'}`, srcBadge('OFFICIAL'), '<div class="chart-legend" id="prodTrendLegend"></div><div class="chart-box tall"><canvas id="chProdTrend"></canvas></div><p class="note">ปี 2558–2567 สถิติทางการ · ปี 2568 ยังไม่มีสถิติ · ปี 2569 พื้นที่ขึ้นทะเบียนเกษตรกร และผลผลิตประมาณการ (พื้นที่คงเหลือ × ผลผลิตเฉลี่ยต่อไร่ 3 ปีล่าสุด)</p>')
+      + card2('ผลผลิตต่อไร่ (กก./ไร่)', srcBadge('OFFICIAL'), '<div class="chart-box"><canvas id="chProdYield"></canvas></div><p class="note">ผลผลิตต่อไร่ = ผลผลิตรวม ÷ พื้นที่เก็บเกี่ยว × 1,000</p>')
+      + (cal ? card2(`ปฏิทินการผลิต: ร้อยละการปลูก/เก็บเกี่ยวรายเดือน ปี ${cal.year}`, srcBadge('PARCELALL'), '<div class="chart-legend" id="prodCalLegend"></div><div class="chart-box"><canvas id="chProdCal"></canvas></div><p class="note">ถ่วงด้วยพื้นที่แปลงในผังแปลงดิจิทัล · เดือนเก็บเกี่ยวเป็นเดือนที่เกษตรกรแจ้งตอนขึ้นทะเบียน</p>')
+        + card2(`อายุเก็บเกี่ยว (เดือน) · ค่ากลาง ${cal.median} เดือน`, srcBadge('PARCELALL'), '<div class="chart-box"><canvas id="chProdGrowth"></canvas></div><p class="note">อายุ = วันเก็บเกี่ยว − วันปลูก (ตัดค่าน้อยกว่า 5 หรือมากกว่า 24 เดือน) · อายุต่ำกว่า 8 เดือนแป้งต่ำ ควรเก็บเกี่ยวที่ 10–12 เดือน</p>') : '');
+  }
+  function prodTableHtml() {
+    const yrs = Object.keys(DA.D.official).map(Number).sort((a, b) => a - b), L = yrs[yrs.length - 1], F = yrs[0], n = L - F;
+    const reg = DA.D.rep.registry;
+    const rows = DA.D.districts.map((d) => {
+      const r = (DA.D.official[L] || {})[d.code] || {}, r0 = (DA.D.official[F] || {})[d.code] || {}, rp = (DA.D.official[L - 1] || {})[d.code] || {};
+      return { code: d.code, name: d.name, planted: r.planted, harvested: r.harvested, production: r.production, yield: U.yieldKgPerRai(r.production, r.harvested),
+        prevProd: rp.production, cagr: r0.production && r.production ? Math.pow(r.production / r0.production, 1 / n) - 1 : null, reg: reg && reg.districts[d.code] ? reg.districts[d.code].rai : null };
+    }).sort((a, b) => (b.production || 0) - (a.production || 0));
+    const tot = rows.reduce((a, r) => a + (r.production || 0), 0);
+    return card2(`ข้อมูลการผลิตรายอำเภอ ปี ${L}`, srcBadge('OFFICIAL'), `<div class="table-wrap"><table class="risk" data-click><thead><tr><th>อำเภอ</th><th>พื้นที่ปลูก (ไร่)</th><th>เก็บเกี่ยว (ไร่)</th><th>ผลผลิต (ตัน)</th><th>สัดส่วน</th><th>ผลผลิตต่อไร่</th><th>เปลี่ยนจาก ${L - 1}</th><th>อัตราเติบโตเฉลี่ย ${F}–${L}</th><th>ขึ้นทะเบียน 2569 (ไร่)</th></tr></thead><tbody>${
+      rows.map((r) => `<tr data-code="${r.code}" class="${state.district === r.code ? 'sel' : ''}"><td>${U.esc(r.name)}</td><td>${U.fmt(r.planted)}</td><td>${U.fmt(r.harvested)}</td><td><b>${U.fmt(r.production)}</b></td><td>${U.pct(U.safeDiv(r.production, tot))}</td><td>${U.fmt(r.yield)}</td>
+        <td>${U.isNum(r.prevProd) && r.prevProd ? `<span class="delta ${r.production >= r.prevProd ? 'up' : 'down'}">${U.pct((r.production - r.prevProd) / r.prevProd)}</span>` : '–'}</td><td>${U.isNum(r.cagr) ? U.pct(r.cagr) + '/ปี' : '–'}</td><td>${U.fmt(r.reg)}</td></tr>`).join('')
+    }</tbody></table></div><p class="note">อัตราเติบโตเฉลี่ย (CAGR) = (ผลผลิตปี ${L} ÷ ผลผลิตปี ${F})^(1/${n}) − 1 · ที่มา: ${U.esc(C.SOURCES.OFFICIAL.note)}</p>`);
+  }
+  function prodPriceHtml() {
+    const ps = (C.PRICES || []).slice().sort((a, b) => (a.date < b.date ? 1 : -1));
+    const all = prodSeries(state.district), ser = all.filter((r) => !r.reg), L = ser[ser.length - 1], e = all.find((r) => r.reg), pr = ps[0];
+    return card2('ราคาและมูลค่าผลผลิต', srcBadge('PRICE'), `
+      ${pr ? `<div class="goal-grid">
+        <div><span>ราคาล่าสุด (${thDate(pr.date)})</span><b>${pr.price.toFixed(2)}</b> บาท/กก. <small>${U.esc(pr.kind)} · ${U.esc(pr.place)}</small></div>
+        <div><span>มูลค่าผลผลิตปี ${L.year} (ราคานี้)</span><b>${U.fmtCompact(L.production * 1000 * pr.price)}</b> บาท <small>${U.fmt(L.production)} ตัน</small></div>
+        ${e ? `<div><span>มูลค่าประมาณการปี 2569</span><b>${U.fmtCompact(e.production * 1000 * pr.price)}</b> บาท <small>ช่วง ${U.fmtCompact(e.prodLo * 1000 * pr.price)}–${U.fmtCompact(e.prodHi * 1000 * pr.price)} บาท</small></div>` : ''}
+      </div>` : '<p class="hint">ยังไม่มีข้อมูลราคา</p>'}
+      <div class="table-wrap"><table class="risk"><thead><tr><th>วันที่</th><th>พื้นที่</th><th>ชนิดราคา</th><th>บาท/กก.</th><th>แหล่งที่มา</th></tr></thead><tbody>${ps.map((p) => `<tr><td>${thDate(p.date)}</td><td class="l">${U.esc(p.place)}</td><td class="l">${U.esc(p.kind)}</td><td><b>${p.price.toFixed(2)}</b></td><td class="l"><a href="${U.esc(p.url)}" target="_blank" rel="noopener">${U.esc(p.src)}</a></td></tr>`).join('')}</tbody></table></div>
+      <p class="note">มูลค่าคำนวณจากราคาจุดเดียว ใช้เพื่อประมาณขนาดเศรษฐกิจเท่านั้น · ราคาหัวมันขึ้นกับเปอร์เซ็นต์แป้งและช่วงเวลา · ควรเพิ่มราคารายสัปดาห์จาก สศก./สำนักงานพาณิชย์จังหวัด (แก้ไขรายการที่ PRICES ใน js/config.js)</p>`);
   }
 
   /* ----- ตรวจสอบชื่อพันธุ์กับทะเบียนพันธุ์ของหน่วยงาน (VARIETY_REGISTRY) ----- */

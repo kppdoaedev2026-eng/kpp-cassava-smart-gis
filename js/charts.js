@@ -222,7 +222,52 @@ KPP.Charts = (function () {
     mk('chSoilPotential', 'potential');
   }
 
+  /* ================= สถานการณ์การผลิต ================= */
+  const TH_MON = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+  function prod(S, series, cal) {
+    const P = PAL(), gold = dark() ? '#f59e0b' : '#D97706';
+    // 1) พื้นที่ปลูก/เก็บเกี่ยว (แท่ง) + ผลผลิต (เส้น แกนขวา)
+    const o = baseOpts();
+    o.interaction = { mode: 'index', intersect: false };
+    o.scales.y.ticks.callback = (v) => U.fmtCompact(v); o.scales.y.title = { display: true, text: 'ไร่' };
+    o.scales.y2 = { position: 'right', grid: { display: false }, border: { display: false }, ticks: { callback: (v) => U.fmtCompact(v), color: css('--text-2'), font: { size: 11 } }, title: { display: true, text: 'ตัน' } };
+    o.plugins.tooltip.callbacks = { label: (c) => ` ${c.dataset.label}: ${U.fmt(c.raw)} ${c.dataset.yAxisID === 'y2' ? 'ตัน' : 'ไร่'}` };
+    make('chProdTrend', { type: 'bar', options: o, data: { labels: series.map((r) => r.year), datasets: [
+      { label: 'พื้นที่ปลูก', data: series.map((r) => r.planted), backgroundColor: series.map((r) => (r.reg ? hatch(P.planted) : P.planted)), borderColor: P.planted, borderWidth: series.map((r) => (r.reg ? 1.5 : 0)), borderRadius: 3, order: 2 },
+      { label: 'พื้นที่เก็บเกี่ยว', data: series.map((r) => r.harvested), backgroundColor: dark() ? '#334766' : '#9ec5f0', borderRadius: 3, order: 3 },
+      { type: 'line', label: 'ผลผลิต', yAxisID: 'y2', data: series.map((r) => r.production), borderColor: gold, backgroundColor: gold, borderWidth: 2.5, tension: 0.25, pointRadius: 3, segment: { borderDash: (c) => (series[c.p1DataIndex] && series[c.p1DataIndex].est ? [5, 4] : undefined) }, order: 1 }
+    ] } });
+    setHtml('prodTrendLegend', legendHtml([[P.planted, 'พื้นที่ปลูก'], [dark() ? '#334766' : '#9ec5f0', 'พื้นที่เก็บเกี่ยว'], [gold, 'ผลผลิต (ตัน) · เส้นประ = ประมาณการ'], [hatchSw(P.planted), 'พื้นที่ขึ้นทะเบียน 2569']]));
+    // 2) ผลผลิตต่อไร่
+    const o2 = baseOpts();
+    o2.interaction = { mode: 'index', intersect: false };
+    o2.scales.y.ticks.callback = (v) => U.fmt(v); o2.scales.y.title = { display: true, text: 'กก./ไร่' };
+    o2.plugins.tooltip.callbacks = { label: (c) => ` ${c.dataset.label}: ${U.fmt(c.raw)} กก./ไร่` };
+    const ys = series.filter((r) => U.isNum(r.yield));
+    const mean = ys.length ? ys.reduce((a, r) => a + r.yield, 0) / ys.length : null;
+    make('chProdYield', { type: 'line', options: o2, data: { labels: ys.map((r) => r.year), datasets: [
+      { label: 'ผลผลิตต่อไร่', data: ys.map((r) => r.yield), borderColor: P.green, backgroundColor: P.green, borderWidth: 2.5, tension: 0.25, pointRadius: 3 },
+      { label: `เฉลี่ย ${ys.length} ปี`, data: ys.map(() => mean), borderColor: css('--text-3'), borderDash: [4, 4], borderWidth: 1.2, pointRadius: 0 }
+    ] } });
+    // 3) ปฏิทินการผลิต: ร้อยละพื้นที่ปลูก/เก็บเกี่ยวรายเดือน
+    if (cal) {
+      const o3 = baseOpts();
+      o3.interaction = { mode: 'index', intersect: false };
+      o3.scales.y.ticks.callback = (v) => v + '%';
+      o3.plugins.tooltip.callbacks = { label: (c) => ` ${c.dataset.label}: ${c.raw.toFixed(1)}% ของพื้นที่` };
+      make('chProdCal', { type: 'bar', options: o3, data: { labels: TH_MON, datasets: [
+        { label: 'ปลูก', data: cal.plant, backgroundColor: P.green, borderRadius: 3 },
+        { label: 'เก็บเกี่ยว', data: cal.harvest, backgroundColor: gold, borderRadius: 3 }
+      ] } });
+      setHtml('prodCalLegend', legendHtml([[P.green, 'ร้อยละพื้นที่ปลูกในเดือน'], [gold, 'ร้อยละพื้นที่เก็บเกี่ยวในเดือน (ตามแผนที่แจ้ง)']]));
+      const o4 = baseOpts();
+      o4.scales.y.ticks.callback = (v) => v + '%';
+      o4.plugins.tooltip.callbacks = { label: (c) => ` ${c.raw.toFixed(1)}% ของพื้นที่` };
+      make('chProdGrowth', { type: 'bar', options: o4, data: { labels: cal.growthLabels, datasets: [{ label: 'อายุเก็บเกี่ยว', data: cal.growth, backgroundColor: P.planted, borderRadius: 3 }] } });
+    }
+  }
+
   const images = () => Object.fromEntries(Object.entries(charts).map(([k, c]) => [k, c.toBase64Image('image/png', 1)]));
 
-  return { overview, cmdAge, cmdAgeStack, cmdHistory, cmdCompare, cmdVarietyStack, rrFactors, soilCharts, varietyClasses, destroyAll, images, charts, legendHtml, hatchSw, PAL };
+  return { prod, overview, cmdAge, cmdAgeStack, cmdHistory, cmdCompare, cmdVarietyStack, rrFactors, soilCharts, varietyClasses, destroyAll, images, charts, legendHtml, hatchSw, PAL };
 })();

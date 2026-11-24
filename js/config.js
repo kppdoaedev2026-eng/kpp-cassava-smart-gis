@@ -11,9 +11,17 @@ KPP.CONFIG = {
   // เป้าหมายลดพื้นที่ระบาดโรคใบด่าง (เทียบรายงานรอบแรกในระบบเป็นฐาน) โดยปลูกพันธุ์ต้านทาน/ทนทานทดแทนในพื้นที่ระบาด
   CMD_GOAL: { reduce: 0.30, cuttingsPerRai: 1600, stalksPerRai: 400, multiplyRatio: 10, supportFromYear: 2569 },   // 1 ลำ ≈ 4 ท่อน
   // ระบบติดตามแปลงส่งเสริม CassavaPlot Monitor (Apps Script) — ดึงสรุปสาธารณะ ?api=public (ดู tools/apps_script_public_api.gs)
+  // KPP Backend (Apps Script + Google Sheet ส่วนตัว) สำหรับเข้าสู่ระบบแอดมิน/เจ้าหน้าที่ — ใส่ URL /exec หลังติดตั้ง tools/apps_script_kpp_backend.gs
+  BACKEND_URL: '',
+  // App Hub กรมส่งเสริมการเกษตร (รายการแอป)
+  APP_HUB_URL: 'https://script.google.com/macros/s/AKfycbxrj4O1p9v71-hTS-SHPGbs94CIwGXuFX7iegXW6ksFpE1coXD5Qt7ODRdrtoBqpQAl/exec',
   PLOT_MONITOR_URL: 'https://script.google.com/macros/s/AKfycbzrQJEFODEicBIC_0kmx17652OxjE0GK_3NRm43db2beM8tr2uutQWssHiy6KkpBDWlqw/exec',
   DEFAULT_YEAR: 2569,
-  PRICE_BAHT_PER_KG: 2.2,
+  PRICE_BAHT_PER_KG: 2.2,   // ใช้ประเมินมูลค่าความเสียหาย (ปรับได้ใน นำเข้าข้อมูล › ตั้งค่า)
+  // ราคาหัวมันสำปะหลังสด (บาท/กก.) — เพิ่มรายการใหม่ได้ที่นี่ (วันที่ ค.ศ., แหล่งอ้างอิง) ระบบใช้รายการล่าสุดแสดงในหน้าสถานการณ์การผลิต
+  PRICES: [
+    { date: '2026-09-04', place: 'อ.ปางศิลาทอง จ.กำแพงเพชร', price: 4.00, kind: 'หัวมันสดคละ ราคารับซื้อ', src: 'rakakaset.com (อ้างอิง สศก.)', url: 'https://rakakaset.com/%E0%B8%A1%E0%B8%B1%E0%B8%99%E0%B8%AA%E0%B8%B3%E0%B8%9B%E0%B8%B0%E0%B8%AB%E0%B8%A5%E0%B8%B1%E0%B8%87/%E0%B8%81%E0%B8%B3%E0%B9%81%E0%B8%9E%E0%B8%87%E0%B9%80%E0%B8%9E%E0%B8%8A%E0%B8%A3/%E0%B8%9B%E0%B8%B2%E0%B8%87%E0%B8%A8%E0%B8%B4%E0%B8%A5%E0%B8%B2%E0%B8%97%E0%B8%AD%E0%B8%87/' }
+  ],
   AID_BAHT_PER_RAI: 1980,
   SURVEILLANCE_RADII_KM: [5, 10],
   FLOOD_REPEAT_MIN_YEARS: 2,
@@ -24,7 +32,7 @@ KPP.CONFIG = {
   DEVELOPER: 'นายดนุพน สุมังคะละ',
   DEVELOPER_TITLE: 'นักวิชาการส่งเสริมการเกษตรปฏิบัติการ',
   DEVELOPER_UNIT: 'กลุ่มส่งเสริมและพัฒนาการผลิต สำนักงานเกษตรจังหวัดกำแพงเพชร',
-  VERSION: '4.5.3',
+  VERSION: '4.6.0',
 
   // การจัดกลุ่มพันธุ์ต่อโรคใบด่าง (ปรับ/เพิ่มพันธุ์ใหม่ได้ใน นำเข้าข้อมูล › ตั้งค่า)
   // ชื่อพันธุ์จับคู่แบบไม่สนคำว่า "พันธุ์"/"มันสำปะหลัง"/ช่องว่าง และรองรับชื่อเรียกอื่น (VARIETY_ALIASES)
@@ -122,6 +130,7 @@ KPP.CONFIG = {
     ESTIMATE: { label: 'ประมาณการ', cls: 'src-est', note: 'ไม่มีสถิติทางการในแหล่งข้อมูล — ใช้ค่าเฉลี่ย 2565–2567' },
     FLOOD: { label: 'รายงานอุทกภัย 63–69', cls: 'src-real', note: 'แบบรายงานภัยพิบัติ (อุทกภัย/วาตภัย) ปี 2563–2569 สนง.เกษตรจังหวัดกำแพงเพชร' },
     NETWORK: { label: 'DOAE ทำเนียบศูนย์', cls: 'src-real', note: 'ทำเนียบ ศจช./ศดปช./ศพก./แปลงใหญ่ (KPP Agri Data Center)' },
+    PRICE: { label: 'ราคาตลาด', cls: 'src-real', note: 'ราคาหัวมันสำปะหลังสด (บาท/กก.) ตามรายการ PRICES พร้อมแหล่งอ้างอิง — เป็นราคา ณ จุดเวลา ไม่ใช่ค่าเฉลี่ยทั้งปี' },
     PARCELALL: { label: 'ผังแปลงหลายปี', cls: 'src-real', note: 'ผังแปลงเกษตรกรรมดิจิทัล กสก. จ.กำแพงเพชร ทุกชนิดพืช (14 ไฟล์ + ไฟล์มันสำปะหลัง 22-11-2569) — กิจกรรมปลูกมันสำปะหลังปี 2563–2569 รวมรายอำเภอ/ตำบล ไม่มีข้อมูลบุคคล' },
     LDDSOIL: { label: 'LDD ชุดดิน 1:25,000', cls: 'src-real', note: 'ข้อมูลชุดดินและกลุ่มชุดดิน จ.กำแพงเพชร มาตราส่วน 1:25,000 กรมพัฒนาที่ดิน (tswc.ldd.go.th/DownloadGIS, ปรับปรุง 2567) — เนื้อดิน ความอุดมสมบูรณ์ ปฏิกิริยาดิน ประจำหน่วยแผนที่' },
     LDD: { label: 'LDD Agri-Map', cls: 'src-real', note: 'แผนที่ศักยภาพที่ดินพืชเศรษฐกิจมันสำปะหลัง จ.กำแพงเพชร (ตารางที่ 7 และภาพที่ 10) กองนโยบายและแผนการใช้ที่ดิน กรมพัฒนาที่ดิน 2564' },

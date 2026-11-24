@@ -45,6 +45,7 @@ KPP.Map = (function () {
   };
   const MODULE_METRICS = {
     overview: ['planted', 'cmdPct', 'coverage', 'regGap', 'resistPct', 'risk', 'production', 'yield'],
+    prod: ['planted', 'production', 'yield'],
     cmd: ['cmdPct', 'cmd', 'resist', 'cmdIndex', 'planted'],
     rootrot: ['rrIndex', 'rrHighPct', 'soilPoorPct'],
     soil: ['soilPoorPct', 'planted']

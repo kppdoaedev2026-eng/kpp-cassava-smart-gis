@@ -46,6 +46,9 @@ flags['bad_plant_date'] = pd_.isna() | (pd_.dt.year < 2015) | (pd_ > pd.Timestam
 flags['no_breed'] = df['breed'] == 'ไม่ระบุพันธุ์'
 excl = flags['no_year'] | flags['bad_area'] | flags['area_gt_parcel']
 df['plant_m'] = pd_.dt.month
+hd_ = pd.to_datetime(df['PRODUCE_DATE'], errors='coerce')
+df['harv_m'] = hd_.dt.month
+df['grow_mo'] = ((hd_ - pd_).dt.days / 30.44).where(lambda x: (x >= 5) & (x <= 24))   # อายุเก็บเกี่ยว (เดือน) ตัดค่าผิดปกติ < 5 หรือ > 24
 q['by_flag'] = {k: int(v) for k, v in flags.sum().items()}
 q['excluded_from_totals'] = int(excl.sum())
 d = df[~excl].copy()
@@ -74,6 +77,15 @@ vrows = [[int(r.year), r.dc, r.tc, bix[r.breed], int(r.n), round(float(r.rai), 2
 # ---------- เดือนปลูก รายปี × อำเภอ ----------
 m = d.dropna(subset=['plant_m']).groupby(['year', 'dc', 'plant_m']).agg(n=('rai', 'size'), rai=('rai', 'sum')).reset_index()
 mrows = [[int(r.year), r.dc, int(r.plant_m), int(r.n), round(float(r.rai), 2)] for r in m.itertuples(index=False)]
+h = d.dropna(subset=['harv_m']).groupby(['year', 'dc', 'harv_m']).agg(n=('rai', 'size'), rai=('rai', 'sum')).reset_index()
+hrows = [[int(r.year), r.dc, int(r.harv_m), int(r.n), round(float(r.rai), 2)] for r in h.itertuples(index=False)]
+gbins = [5, 8, 10, 12, 14, 24.01]
+gd = d.dropna(subset=['grow_mo']).copy()
+gd['gb'] = pd.cut(gd['grow_mo'], gbins, right=False, labels=['5-8', '8-10', '10-12', '12-14', '14+'])
+g2 = gd.groupby(['year', 'dc', 'gb'], observed=True).agg(n=('rai', 'size'), rai=('rai', 'sum')).reset_index()
+grows = [[int(r.year), r.dc, str(r.gb), int(r.n), round(float(r.rai), 2)] for r in g2.itertuples(index=False)]
+gmed = {int(y): round(float(v), 1) for y, v in gd.groupby('year')['grow_mo'].median().items()}
+q['bad_harvest_date'] = int(hd_.isna().sum()); q['growth_outside_5_24'] = int((pd_.notna() & hd_.notna()).sum() - df['grow_mo'].notna().sum())
 
 # ---------- การเปลี่ยนพันธุ์ในแปลงเดิม: จับคู่ตามตำแหน่ง (AREA_ID/PAR_ID ไม่คงที่ข้ามปี) ----------
 # แปลงปี y จับคู่กับแปลงปีถัดไปที่เปรียบเทียบได้ เมื่อจุดศูนย์กลางห่าง ≤ MATCH_M เมตร และพื้นที่ต่างกันไม่เกิน 30%
@@ -140,6 +152,8 @@ out = {'source': 'ผังแปลงเกษตรกรรมดิจิ�
        'min_n': MIN_N, 'rule': 'ปีที่นำมาเปรียบเทียบ: แปลง ≥ %d และพื้นที่ ≥ 50%% ของค่ามัธยฐานรายปี' % MIN_N, 'quality': q, 'years': yinfo, 'breeds': breeds,
        'variety': {'fields': ['year', 'dc', 'tc', 'breed', 'n', 'rai'], 'rows': vrows},
        'plant_month': {'fields': ['year', 'dc', 'month', 'n', 'rai'], 'rows': mrows},
+       'harvest_month': {'fields': ['year', 'dc', 'month', 'n', 'rai'], 'rows': hrows, 'note': 'เดือนที่คาดว่าจะเก็บเกี่ยว (PRODUCE_DATE ตามที่เกษตรกรแจ้งขึ้นทะเบียน)'},
+       'growth': {'fields': ['year', 'dc', 'bin', 'n', 'rai'], 'rows': grows, 'median_months': gmed, 'note': 'อายุเก็บเกี่ยว = PRODUCE_DATE − PLANT_DATE (เดือน) ตัดค่า < 5 หรือ > 24 เดือน'},
        'transitions': {'fields': ['y0', 'y1', 'dc', 'breed0', 'breed1', 'n', 'rai'], 'rows': trans},
        'soil': {'fields': ['year', 'dc', 'unit', 'n', 'rai'], 'rows': soil_rows,
                 'units': [{k: u.get(k) for k in ('group', 'code', 'name', 'texture', 'fertility', 'ph')} for u in (soil_units or [])]}}
