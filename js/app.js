@@ -61,12 +61,12 @@ KPP.App = (function () {
   function selectDistrict(code) {
     if (state.district === code && !state.tambon) code = null;
     state.district = code || null; state.tambon = null;
-    update(); M.fitScope();
+    update(false, true);
   }
   function selectTambon(code) {
-    if (state.tambon === code) { state.tambon = null; update(); M.fitScope(); return; }
+    if (state.tambon === code) { state.tambon = null; update(false, true); return; }
     state.tambon = code; state.district = code.slice(0, 4);
-    update(); M.fitScope();
+    update(false, true);
   }
   function setYear(y) { state.year = +y; update(); }
   function setDisease(k) { state.disease = state.disease === k ? 'all' : k; update(); }
@@ -81,7 +81,7 @@ KPP.App = (function () {
   }
 
   let pending = 0;
-  function update(first) {
+  function update(first, fit) {
     clearTimeout(pending);
     pending = setTimeout(() => {
       syncFilters();
@@ -90,7 +90,7 @@ KPP.App = (function () {
       if (KPP.Admin && KPP.Admin.refresh) KPP.Admin.refresh();
       renderSide();
       renderCrumb();
-      if (first) M.fitScope();
+      if (first || fit) M.fitScope();
     }, 0);
   }
 
@@ -960,10 +960,10 @@ KPP.App = (function () {
   function bindUI() {
     document.querySelectorAll('.mod').forEach((b) => b.addEventListener('click', () => setModule(b.dataset.mod)));
     $('fYear').addEventListener('change', (e) => setYear(e.target.value));
-    $('fDistrict').addEventListener('change', (e) => { state.district = e.target.value || null; state.tambon = null; update(); M.fitScope(); });
-    $('fTambon').addEventListener('change', (e) => { state.tambon = e.target.value || null; update(); M.fitScope(); });
+    $('fDistrict').addEventListener('change', (e) => { state.district = e.target.value || null; state.tambon = null; update(false, true); });
+    $('fTambon').addEventListener('change', (e) => { state.tambon = e.target.value || null; update(false, true); });
     $('fRisk').addEventListener('change', (e) => { state.risk = e.target.value; update(); });
-    $('btnReset').addEventListener('click', () => { Object.assign(state, { district: null, tambon: null, disease: 'all', risk: 'all' }); update(); M.fitScope(); });
+    $('btnReset').addEventListener('click', () => { Object.assign(state, { district: null, tambon: null, disease: 'all', risk: 'all' }); update(false, true); });
     $('btnImport').addEventListener('click', () => KPP.Importer.open());
     $('btnAbout').addEventListener('click', openAbout);
     $('btnExport').addEventListener('click', (e) => { e.stopPropagation(); $('exportMenu').hidden = !$('exportMenu').hidden; });
@@ -1012,7 +1012,7 @@ KPP.App = (function () {
     $('crumb').addEventListener('click', (e) => {
       const a = e.target.closest('a'); if (!a) return;
       if (a.dataset.crumb === 'prov') { state.district = null; state.tambon = null; } else state.tambon = null;
-      update(); M.fitScope();
+      update(false, true);
     });
     ['atlasModal', 'aboutModal'].forEach((id) => {
       $(id).addEventListener('click', (e) => { if (e.target.id === id || e.target.closest('[data-close]')) $(id).hidden = true; });

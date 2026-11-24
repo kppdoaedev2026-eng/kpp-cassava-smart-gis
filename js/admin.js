@@ -60,7 +60,7 @@ KPP.Admin = (function () {
     el.innerHTML = `<div class="adm-head"><b>${U.esc(S.name || '')}</b> <span class="vclass-chip" style="background:${adm ? '#b2182b' : '#0f766e'}">${adm ? 'แอดมิน' : 'เจ้าหน้าที่'}</span> <button class="btn sm" id="admLogout">ออกจากระบบ</button></div>
       <h4>🗺️ รูปแบบการแสดงแผนที่</h4>
       <div class="seg" id="admMode"><button data-mode="grid" class="${S.mode === 'grid' ? 'on' : ''}">กริด 1 กม. (สาธารณะ)</button><button data-mode="parcel" class="${S.mode === 'parcel' ? 'on' : ''}" ${s.staff_can_view_parcels === 'TRUE' || adm ? '' : 'disabled'}>พิกัดแปลง/ผังแปลง</button></div>
-      <p class="hint">${S.mode === 'parcel' ? (S.rows ? `แสดงพิกัดแปลง ${U.fmt(S.rows.length)} แปลง${S.names ? ' (พร้อมชื่อ)' : ''}` : 'กำลังโหลดพิกัดแปลง…') : 'แสดงเฉพาะกริด 1 กม. ที่ไม่ระบุตัวบุคคล'}</p>
+      <p class="hint" id="admModeInfo">${S.mode === 'parcel' ? (S.info || 'กำลังโหลดพิกัดแปลง…') : 'แสดงเฉพาะกริด 1 กม. ที่ไม่ระบุตัวบุคคล'}</p>
       ${adm ? `<h4>🔒 การควบคุมโดยแอดมิน</h4>
         ${toggleRow('show_parcel_names', 'แสดงชื่อแปลง/ชื่อเจ้าของแปลง', 'เปิดเฉพาะเมื่อจำเป็น ทุกการดูถูกบันทึกใน audit')}
         ${toggleRow('show_personal', 'แสดงข้อมูลส่วนบุคคล (เบอร์โทร)', 'เฉพาะแอดมินเห็น')}
@@ -71,7 +71,7 @@ KPP.Admin = (function () {
       <form id="admPinForm" class="adm-form"><input id="admOldPin" type="password" placeholder="รหัสเดิม" autocomplete="current-password" required>
         <input id="admNewPin" type="password" placeholder="รหัสใหม่ (อย่างน้อย 8 ตัว)" autocomplete="new-password" minlength="8" required>
         <div id="admPinMsg" class="hint" role="alert"></div><button class="btn sm" type="submit">บันทึกรหัสใหม่</button></form>`;
-    $('admLogout').onclick = async () => { await call({ action: 'logout', token: S.token }); Object.assign(S, { token: null, role: null, name: '', rows: null, mode: 'grid' }); try { sessionStorage.removeItem(KEY); } catch (e) { /* ไม่เก็บ */ } clearLayer(); renderButton(); render(); };
+    $('admLogout').onclick = async () => { await call({ action: 'logout', token: S.token }); Object.assign(S, { token: null, role: null, name: '', rows: null, mode: 'grid', cache: {} }); try { sessionStorage.removeItem(KEY); } catch (e) { /* ไม่เก็บ */ } clearLayer(); renderButton(); render(); };
     $('admPinForm').addEventListener('submit', async (e) => {
       e.preventDefault(); $('admPinMsg').textContent = 'กำลังบันทึก…';
       const r = await call({ action: 'change_pin', old_pin: $('admOldPin').value, new_pin: $('admNewPin').value });
@@ -81,7 +81,7 @@ KPP.Admin = (function () {
     $('admMode').addEventListener('click', (e) => { const b = e.target.closest('button[data-mode]'); if (!b || b.disabled) return; S.mode = b.dataset.mode; applyMode(); render(); });
     el.querySelectorAll('[data-set]').forEach((i) => i.addEventListener('change', async () => {
       const r = await call({ action: 'set_settings', settings: { [i.dataset.set]: i.checked ? 'TRUE' : 'FALSE' } });
-      if (r.ok) { S.settings = r.settings; S.rows = null; if (S.mode === 'parcel') applyMode(); U.toast('บันทึกการตั้งค่าแล้ว', 'ok'); } else { U.toast(r.error || 'บันทึกไม่สำเร็จ', 'err'); i.checked = !i.checked; }
+      if (r.ok) { S.settings = r.settings; S.cache = {}; if (S.mode === 'parcel') applyMode(); U.toast('บันทึกการตั้งค่าแล้ว', 'ok'); } else { U.toast(r.error || 'บันทึกไม่สำเร็จ', 'err'); i.checked = !i.checked; }
     }));
     const au = $('admAudit'); if (au) au.onclick = async () => {
       const r = await call({ action: 'audit' });
@@ -89,28 +89,39 @@ KPP.Admin = (function () {
     };
   }
 
-  /* ---------- แสดงพิกัดแปลงบนแผนที่ (เฉพาะเมื่อเข้าสู่ระบบและเลือกโหมดพิกัดแปลง) ---------- */
+  /* ---------- แสดงพิกัดแปลงบนแผนที่ (เฉพาะเมื่อเข้าสู่ระบบและเลือกโหมดพิกัดแปลง) ----------
+     โหลดทีละอำเภอ (แคชในหน้านี้) แล้วกรองตำบลที่เลือกฝั่งเบราว์เซอร์ · แอดมินต้องเลือกอำเภอก่อน (ไม่โหลดทั้งจังหวัด) · เจ้าหน้าที่ได้เฉพาะอำเภอที่มอบหมาย */
+  S.cache = {};
   function clearLayer() { if (S.layer) { KPP.Map.map.removeLayer(S.layer); S.layer = null; } KPP.Map.layers.parcels.on = true; KPP.Map.refresh(); }
+  function setInfo(t) { S.info = t; const el = $('admModeInfo'); if (el) el.textContent = t; }
   async function applyMode() {
     if (!loggedIn() || S.mode !== 'parcel') { clearLayer(); return; }
-    const cur = KPP.App.state.year + '|' + (KPP.App.state.district || '');
-    if (S.rows && S.rowsKey !== cur) S.rows = null;      // เปลี่ยนปี/อำเภอ → โหลดใหม่
-    if (!S.rows) {
-      const st = KPP.App.state, r = await call({ action: 'parcels', year: st.year, district: st.district || '' });
-      if (!r.ok) { U.toast(r.error || 'โหลดพิกัดไม่สำเร็จ', 'err'); S.mode = 'grid'; render(); return; }
-      S.rows = r.rows; S.names = r.names; S.rowsKey = st.year + '|' + (st.district || '');
-      if (!r.rows.length) U.toast('ไม่มีข้อมูลพิกัดแปลงในปี/อำเภอที่เลือก หรือยังไม่ได้รับมอบหมายอำเภอ', 'warn', 5000);
+    const st = KPP.App.state, need = isAdmin() && !st.district;
+    if (need) { if (S.layer) { KPP.Map.map.removeLayer(S.layer); S.layer = null; } setInfo('เลือกอำเภอที่ตัวกรองด้านบนก่อน จึงจะแสดงพิกัดแปลง (โหลดทีละอำเภอ/ตำบลเพื่อความเร็ว)'); KPP.Map.layers.parcels.on = false; KPP.Map.refresh(); return; }
+    const key = st.year + '|' + (st.district || '*');
+    if (!S.cache[key]) {
+      setInfo('กำลังโหลดพิกัดแปลง…');
+      const r = await call({ action: 'parcels', year: st.year, district: st.district || '' });
+      if (!r.ok) { U.toast(r.error || 'โหลดพิกัดไม่สำเร็จ', 'err'); S.mode = 'grid'; render(); clearLayer(); return; }
+      S.cache[key] = { rows: r.rows, names: r.names };
     }
+    const cur = KPP.App.state;
+    if (cur.year + '|' + (cur.district || '*') !== key && !(isAdmin() === false && !cur.district)) { return; }   // ตัวกรองเปลี่ยนระหว่างรอ — รอบใหม่จะโหลดเอง
+    const c = S.cache[key];
+    const rows = cur.tambon ? c.rows.filter((p) => String(p.tambon) === String(cur.tambon)) : c.rows;
+    S.names = c.names; S.rows = rows;
     if (S.layer) KPP.Map.map.removeLayer(S.layer);
     KPP.Map.layers.parcels.on = false; KPP.Map.refresh();
+    if (!S.renderer) S.renderer = L.canvas({ padding: 0.3 });
     const g = L.layerGroup();
-    S.rows.forEach((p) => {
-      if (!U.isNum(+p.lat) || !U.isNum(+p.lng)) return;
-      const m = L.circleMarker([+p.lat, +p.lng], { radius: 4, color: '#065F46', weight: 1, fillColor: '#10b981', fillOpacity: 0.8 });
-      m.bindPopup(`<div class="pp"><h4>แปลง ${U.esc(p.key || '')}</h4><table>${[['พันธุ์', p.variety], ['พื้นที่', p.rai ? U.fmt(+p.rai) + ' ไร่' : ''], ['วันปลูก', p.plant_date], ['วันเก็บเกี่ยว', p.harvest_date], ['ชื่อ', p.owner_name], ['โทร', p.phone]].filter((x) => x[1]).map(([k, v]) => `<tr><td>${k}</td><td>${U.esc(v)}</td></tr>`).join('')}</table><div class="hint">ข้อมูลสำหรับเจ้าหน้าที่ — ห้ามเผยแพร่</div></div>`);
+    rows.forEach((p) => {
+      if (!U.isNum(+p.lat) || !U.isNum(+p.lng) || !+p.lat) return;
+      const m = L.circleMarker([+p.lat, +p.lng], { renderer: S.renderer, radius: rows.length > 6000 ? 3 : 4, color: '#065F46', weight: 1, fillColor: '#10b981', fillOpacity: 0.8 });
+      m.bindPopup(() => `<div class="pp"><h4>แปลง ${U.esc(p.key || '')}</h4><table>${[['พันธุ์', p.variety], ['พื้นที่', p.rai ? U.fmt(+p.rai) + ' ไร่' : ''], ['วันปลูก', p.plant_date], ['วันเก็บเกี่ยว', p.harvest_date], ['ชื่อ', p.owner_name], ['ที่อยู่/หมายเหตุ', p.name_note], ['โทร', p.phone]].filter((x) => x[1]).map(([k, v]) => `<tr><td>${k}</td><td>${U.esc(v)}</td></tr>`).join('')}</table><div class="hint">ข้อมูลสำหรับเจ้าหน้าที่ — ห้ามเผยแพร่</div></div>`);
       g.addLayer(m);
     });
     S.layer = g.addTo(KPP.Map.map);
+    setInfo(`แสดงพิกัดแปลง ${U.fmt(rows.length)} แปลง${cur.tambon ? ' (ตำบลที่เลือก)' : cur.district ? ' (อำเภอที่เลือก)' : ''}${S.names ? ' · มีชื่อ' : ''}`);
   }
 
   function init() {
