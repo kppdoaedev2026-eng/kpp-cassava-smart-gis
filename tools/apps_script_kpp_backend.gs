@@ -138,6 +138,52 @@ function handle_(b) {
     setPin_(u.code, String(b.new_pin));
     return { ok: true };
   }
+  if (a === 'list_staff') {
+    if (!isAdmin) return { ok: false, error: 'เฉพาะแอดมิน', code: 403 };
+    return { ok: true, rows: rows_('staff').map(function (r) { return { code: r.code, name: r.name, role: r.role, active: (r.active === true || String(r.active).toUpperCase() === 'TRUE'), districts: String(r.districts || ''), last_login: r.last_login ? String(r.last_login) : '' }; }) };
+  }
+  if (a === 'add_staff') {
+    if (!isAdmin) return { ok: false, error: 'เฉพาะแอดมิน', code: 403 };
+    var ncode = String(b.code || '').trim(), npin = String(b.pin || '');
+    if (!/^[A-Za-z0-9_.-]{3,30}$/.test(ncode)) return { ok: false, error: 'รหัสผู้ใช้ 3–30 ตัว (อังกฤษ/ตัวเลข . _ -)' };
+    if (npin.length < 8) return { ok: false, error: 'รหัสผ่านอย่างน้อย 8 ตัว' };
+    if (rows_('staff').some(function (x) { return String(x.code).toLowerCase() === ncode.toLowerCase(); })) return { ok: false, error: 'มีรหัสผู้ใช้นี้แล้ว' };
+    var nrole = b.role === 'admin' ? 'admin' : 'staff', nsalt = Utilities.getUuid();
+    var sst = sh_('staff'), shdr = sst.getRange(1, 1, 1, sst.getLastColumn()).getValues()[0];
+    sst.appendRow(shdr.map(function (h) { return h === 'code' ? ncode : h === 'name' ? String(b.name || ncode) : h === 'role' ? nrole : h === 'active' ? true : h === 'pin_hash' ? hash_(npin, nsalt) : h === 'salt' ? nsalt : h === 'districts' ? String(b.districts || '') : ''; }));
+    audit_(u.code, 'add_staff', ncode + ' role=' + nrole + ' districts=' + (b.districts || ''));
+    return { ok: true };
+  }
+  if (a === 'update_staff') {
+    if (!isAdmin) return { ok: false, error: 'เฉพาะแอดมิน', code: 403 };
+    var tgt = rows_('staff').filter(function (x) { return String(x.code) === String(b.code); })[0];
+    if (!tgt) return { ok: false, error: 'ไม่พบผู้ใช้' };
+    if (String(b.code) === String(u.code) && (b.active === false || (b.role && b.role !== 'admin'))) return { ok: false, error: 'ไม่สามารถปิดหรือลดสิทธิ์บัญชีของตัวเอง' };
+    var s2 = sh_('staff'), h2 = s2.getRange(1, 1, 1, s2.getLastColumn()).getValues()[0], did = [];
+    var setCol = function (nm, val) { var j = h2.indexOf(nm); if (j >= 0) s2.getRange(tgt._row, j + 1).setValue(val); };
+    if (b.name !== undefined) { setCol('name', String(b.name)); did.push('name'); }
+    if (b.active !== undefined) { setCol('active', !!b.active); did.push('active=' + !!b.active); }
+    if (b.districts !== undefined) { setCol('districts', String(b.districts)); did.push('districts=' + b.districts); }
+    if (b.role !== undefined) { setCol('role', b.role === 'admin' ? 'admin' : 'staff'); did.push('role=' + b.role); }
+    if (b.new_pin) { if (String(b.new_pin).length < 8) return { ok: false, error: 'รหัสผ่านอย่างน้อย 8 ตัว' }; var ns = Utilities.getUuid(); setCol('salt', ns); setCol('pin_hash', hash_(String(b.new_pin), ns)); did.push('reset_pin'); }
+    audit_(u.code, 'update_staff', b.code + ': ' + did.join(', '));
+    return { ok: true };
+  }
+  if (a === 'parcel_detail') {                 // รายละเอียดแปลงเดียว (แอดมินเห็นข้อมูลส่วนบุคคลครบ · เจ้าหน้าที่ตามสิทธิ์) — บันทึก audit ทุกครั้ง
+    var dyr = String(b.year || '2569').replace(/\D/g, ''), dsh = ss_().getSheetByName('parcels_' + dyr);
+    if (!dsh) return { ok: false, error: 'ไม่พบข้อมูลปี ' + dyr };
+    var fnd = dsh.getRange('A:A').createTextFinder(String(b.key)).matchEntireCell(true).findNext();
+    if (!fnd) return { ok: false, error: 'ไม่พบแปลง' };
+    var dh = dsh.getRange(1, 1, 1, dsh.getLastColumn()).getValues()[0], dv = dsh.getRange(fnd.getRow(), 1, 1, dh.length).getValues()[0], rec = {};
+    dh.forEach(function (k, j) { rec[k] = dv[j]; });
+    if (!isAdmin) {
+      if (s.staff_can_view_parcels !== 'TRUE' || staffDistricts_(u.code).indexOf(String(rec.district)) < 0) return { ok: false, error: 'ไม่มีสิทธิ์ดูแปลงนี้', code: 403 };
+      if (!(s.staff_can_view_names === 'TRUE' && s.show_parcel_names === 'TRUE')) { delete rec.owner_name; delete rec.note; }
+      delete rec.phone;
+    }
+    audit_(u.code, 'parcel_detail', dyr + ':' + b.key);
+    return { ok: true, record: rec };
+  }
   if (a === 'parcels') {                       // พิกัด/ผังแปลง — แอดมินเห็นทั้งหมด · เจ้าหน้าที่เห็นเฉพาะอำเภอที่รับผิดชอบ (คอลัมน์ districts) และเมื่อแอดมินอนุญาต
     var myDistricts = isAdmin ? null : staffDistricts_(u.code);
     if (!isAdmin && (s.staff_can_view_parcels !== 'TRUE' || !myDistricts.length)) return { ok: false, error: 'ยังไม่ได้รับสิทธิ์ดูพิกัดแปลง (ต้องกำหนดอำเภอที่รับผิดชอบ)', code: 403 };

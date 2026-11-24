@@ -150,6 +150,21 @@ KPP.U = (function () {
     } catch (e) { return null; }
   }
 
-  return { isNum, safeDiv, fmt, fmtCompact, pct, yieldKgPerRai, haversineKm, utmToLatLng, seeded, hashStr,
+  /* โหลดไลบรารีขนาดใหญ่เมื่อต้องใช้เท่านั้น (ส่งออก/นำเข้า) — ลดข้อมูลตอนเปิดหน้าแรกราว 45% */
+  const LIBS = { xlsx: ['vendor/xlsx.full.min.js', () => window.XLSX], jspdf: ['vendor/jspdf.umd.min.js', () => window.jspdf], html2canvas: ['vendor/html2canvas.min.js', () => window.html2canvas],
+    shp: ['vendor/shp.min.js', () => window.shp], togeojson: ['vendor/togeojson.umd.js', () => window.toGeoJSON], papaparse: ['vendor/papaparse.min.js', () => window.Papa], proj4: ['vendor/proj4.js', () => window.proj4] };
+  const libP = {};
+  function lib(...names) {
+    return Promise.all(names.map((n) => {
+      const L = LIBS[n]; if (!L) return Promise.reject(new Error('ไม่รู้จักไลบรารี ' + n));
+      if (L[1]()) return Promise.resolve();
+      return libP[n] || (libP[n] = new Promise((res, rej) => {
+        const s = document.createElement('script'); s.src = L[0] + '?v=' + (KPP.CONFIG ? KPP.CONFIG.VERSION : '');
+        s.onload = () => res(); s.onerror = () => { delete libP[n]; rej(new Error('โหลดไลบรารีไม่สำเร็จ: ' + n)); };
+        document.head.appendChild(s);
+      }));
+    }));
+  }
+  return { isNum, safeDiv, lib, fmt, fmtCompact, pct, yieldKgPerRai, haversineKm, utmToLatLng, seeded, hashStr,
     pointInGeometry, geomBBox, esc, normDistrict, normTambon, toNum, download, toast, thaiDate, store };
 })();

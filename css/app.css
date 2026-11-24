@@ -519,3 +519,8 @@ table.risk tr.warn-row td { background: rgba(250,178,25,.10); }
 .adm-form { display: grid; gap: 10px; } .adm-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
 .adm-row { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
 .adm-row small { display: block; color: var(--text-3); font-size: .76rem; } .adm-row input { margin-top: 4px; }
+
+.adm-dist { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 4px 0 8px; } .adm-chk { font-size: .8rem; display: inline-flex; gap: 4px; align-items: center; }
+.adm-add { margin: 8px 0; } .adm-add summary { cursor: pointer; font-weight: 600; }
+.pp-full td { vertical-align: top; padding: 1px 6px 1px 0; font-size: .78rem; word-break: break-word; } .pp-full td:first-child { color: var(--text-3); white-space: nowrap; }
+.modal-card.narrow:has(.adm-head) { width: min(760px, 100%); }

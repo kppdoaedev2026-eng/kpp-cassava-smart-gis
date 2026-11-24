@@ -42,6 +42,7 @@ KPP.Importer = (function () {
 
   async function parseTable(file) {
     const content = await readFile(file);
+    await U.lib('papaparse', 'xlsx');
     let rows;
     if (/\.csv$/i.test(file.name)) {
       let txt = content;
@@ -168,6 +169,7 @@ KPP.Importer = (function () {
   async function importSpatial(file) {
     busy(true, 'กำลังอ่านชั้นข้อมูล ' + file.name);
     try {
+      await U.lib('shp', 'togeojson', 'proj4');
       let gj;
       if (/\.zip$/i.test(file.name)) {
         const buf = await readFile(file);
@@ -210,7 +212,8 @@ KPP.Importer = (function () {
     [2569, 'ปางศิลาทอง', 'ปางตาไว', 5, 320, 300, 960, 12.5, 40, 0, 'อิทธิ 1', 16.0631, 99.4523, '', '', ''],
     [2569, 'เมืองกำแพงเพชร', 'อ่างทอง', 9, 210, 210, 690, 4, 15, 5, 'เกษตรศาสตร์ 50', '', '', 546282, 1826491, 47]
   ];
-  function template(kind) {
+  async function template(kind) {
+    if (kind === 'xlsx') await U.lib('xlsx');
     if (kind === 'csv') U.download('แม่แบบ_ผลสำรวจมันสำปะหลัง.csv', '﻿' + Papa.unparse([TPL_HEAD, ...TPL_ROWS]), 'text/csv;charset=utf-8');
     if (kind === 'xlsx') {
       const wb = XLSX.utils.book_new();

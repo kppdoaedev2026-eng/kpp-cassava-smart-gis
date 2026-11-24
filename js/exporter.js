@@ -8,6 +8,7 @@ KPP.Exporter = (function () {
   async function png() {
     busy(true, 'กำลังสร้างภาพแดชบอร์ด…');
     try {
+      await KPP.U.lib('html2canvas');
       await fontsReady();
       const mapEl = document.getElementById('map');
       const staticUrl = KPP.Map.renderStatic(mapEl.clientWidth, mapEl.clientHeight).toDataURL('image/png');
@@ -33,6 +34,7 @@ KPP.Exporter = (function () {
     const S = KPP.App.state;
     busy(true, 'กำลังจัดทำชุดแผนที่…');
     try {
+      await KPP.U.lib('jspdf');
       await fontsReady();
       const cv = KPP.Map.renderAtlasCanvas({ year: S.year, district: S.district, tambon: null });
       const base = `ชุดแผนที่โรคใบด่าง_${S.district ? DA.D.dByCode[S.district].name + '_' : ''}${S.year}_${stamp()}`;
@@ -48,6 +50,7 @@ KPP.Exporter = (function () {
     const S = KPP.App.state;
     busy(true, 'กำลังจัดทำรายงานผู้บริหาร…');
     try {
+      await KPP.U.lib('html2canvas', 'jspdf');
       await fontsReady();
       const mapCanvas = KPP.Map.renderStatic();
       const atlasCanvas = KPP.Map.renderAtlasCanvas({ year: S.year, district: S.district, tambon: null });
@@ -115,7 +118,8 @@ KPP.Exporter = (function () {
   const r0 = (v) => (U.isNum(v) ? Math.round(v) : null);
   const r4 = (v) => (U.isNum(v) ? +v.toFixed(4) : null);
 
-  function xlsx() {
+  async function xlsx() {
+    await KPP.U.lib('xlsx');
     const S = KPP.App.state;
     const wb = XLSX.utils.book_new();
     const srcL = (k) => (C.SOURCES[k] || {}).label || '';

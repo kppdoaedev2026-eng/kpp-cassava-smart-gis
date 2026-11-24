@@ -84,14 +84,22 @@ KPP.App = (function () {
   function update(first, fit) {
     clearTimeout(pending);
     pending = setTimeout(() => {
-      syncFilters();
-      renderKPIs();
-      M.render(state);
-      if (KPP.Admin && KPP.Admin.refresh) KPP.Admin.refresh();
-      renderSide();
-      renderCrumb();
-      if (first || fit) M.fitScope();
+      // แต่ละขั้นแยกกัน: ขั้นใดล้มเหลวต้องไม่ทำให้ส่วนอื่น (เช่น บทสรุป/ตาราง) หายไปทั้งหน้า
+      const step = (name, fn) => { try { fn(); } catch (e) { console.error('[KPP] ' + name + ':', e); errors.push(name + ': ' + e.message); } };
+      const errors = [];
+      step('filters', syncFilters);
+      step('kpis', renderKPIs);
+      step('map', () => M.render(state));
+      step('admin', () => { if (KPP.Admin && KPP.Admin.refresh) KPP.Admin.refresh(); });
+      step('side', renderSide);
+      step('crumb', renderCrumb);
+      step('fit', () => { if (first || fit) M.fitScope(); });
+      if (errors.length) showErrors(errors);
     }, 0);
+  }
+  function showErrors(list) {
+    if (!list.some((x) => /^(side|kpis)/.test(x)) ) return;
+    const el = $('sideBody'); if (el && !el.children.length) el.innerHTML = `<div class="ins critical"><h4>⚠️ แสดงผลส่วนนี้ไม่สำเร็จ</h4><p>${list.map(U.esc).join('<br>')}</p><p class="hint">ลองกด Ctrl+F5 หรือเลือกแท็บอื่น · หากยังพบ ให้แจ้งข้อความด้านบนแก่ผู้ดูแลระบบ</p></div>`;
   }
 
   /* ---------- KPI ---------- */
@@ -389,8 +397,10 @@ KPP.App = (function () {
     $('sideTabs').innerHTML = mod.tabs.map((t) => `<button role="tab" class="tab ${t.id === cur ? 'active' : ''}" data-tab="${t.id}">${t.label}</button>`).join('');
     CH.destroyAll();
     const t = mod.tabs.find((x) => x.id === cur) || mod.tabs[0];
-    $('sideBody').innerHTML = t.html();
-    if (t.after) t.after();
+    let html;
+    try { html = t.html(); } catch (e) { console.error('[KPP] tab ' + t.id, e); html = `<div class="ins critical"><h4>⚠️ แท็บ "${U.esc(t.label)}" แสดงผลไม่สำเร็จ</h4><p>${U.esc(e.message)}</p><p class="hint">เลือกแท็บอื่น หรือกด Ctrl+F5 · แจ้งข้อความนี้แก่ผู้ดูแลระบบ</p></div>`; }
+    $('sideBody').innerHTML = html;
+    try { if (t.after) t.after(); } catch (e) { console.error('[KPP] tab charts ' + t.id, e); }
   }
   function showTab(id) { state.tab[state.module] = id; renderSide(); }
   const activeTab = () => state.tab[state.module] || MODULES[state.module].tabs[0].id;

@@ -37,6 +37,35 @@ KPP.Admin = (function () {
     const v = S.settings && String(S.settings[key]) === 'TRUE';
     return `<label class="adm-row"><input type="checkbox" data-set="${key}" ${v ? 'checked' : ''} ${disabled ? 'disabled' : ''}><span><b>${label}</b><small>${hint}</small></span></label>`;
   }
+  const distBoxes = (sel) => KPP.Data.D.districts.map((d) => `<label class="adm-chk"><input type="checkbox" value="${d.code}" ${sel.includes(d.code) ? 'checked' : ''}>${U.esc(d.name)}</label>`).join('');
+  const pickDist = (root) => [...root.querySelectorAll('input[type=checkbox]:checked')].map((x) => x.value).join(',');
+  const distNames = (csv) => String(csv || '').split(/[,\s]+/).filter(Boolean).map((c) => (KPP.Data.D.dByCode[c] || {}).name || c).join(', ') || '—';
+
+  async function loadUsers() {
+    const box = $('admUsers'); if (!box) return;
+    const r = await call({ action: 'list_staff' });
+    if (!r.ok) { box.textContent = r.error || 'โหลดรายชื่อไม่สำเร็จ (ต้อง Deploy backend เวอร์ชันล่าสุด)'; return; }
+    box.className = '';
+    box.innerHTML = `<div class="table-wrap"><table class="risk"><thead><tr><th>ผู้ใช้</th><th>ชื่อ</th><th>สิทธิ์</th><th>ใช้งาน</th><th>อำเภอที่รับผิดชอบ</th><th>เข้าล่าสุด</th><th></th></tr></thead><tbody>${
+      r.rows.map((x) => `<tr data-code="${U.esc(x.code)}"><td class="l"><b>${U.esc(x.code)}</b></td><td class="l">${U.esc(x.name)}</td><td>${x.role === 'admin' ? 'แอดมิน' : 'เจ้าหน้าที่'}</td>
+        <td><input type="checkbox" data-au="active" ${x.active ? 'checked' : ''} ${x.code === (S.code || '') ? 'disabled' : ''} aria-label="เปิดใช้งาน ${U.esc(x.code)}"></td>
+        <td class="l" style="white-space:normal">${x.role === 'admin' ? 'ทุกอำเภอ' : U.esc(distNames(x.districts))}</td><td class="l">${U.esc(String(x.last_login || '').slice(0, 16).replace('T', ' ')) || '—'}</td>
+        <td class="l"><button class="btn sm" data-au="dist" ${x.role === 'admin' ? 'disabled' : ''}>อำเภอ</button> <button class="btn sm" data-au="pin">รีเซ็ตรหัส</button></td></tr>
+        <tr class="adm-edit" hidden data-edit="${U.esc(x.code)}"><td colspan="7"><div class="adm-dist">${distBoxes(String(x.districts || '').split(/[,\s]+/).filter(Boolean))}</div><button class="btn primary sm" data-au="savedist">บันทึกอำเภอ</button></td></tr>`).join('')}</tbody></table></div>`;
+    box.onclick = async (e) => {
+      const b = e.target.closest('[data-au]'); if (!b || b.type === 'checkbox') return;
+      const tr = b.closest('tr'), code = (tr.dataset.code || tr.dataset.edit);
+      if (b.dataset.au === 'dist') { box.querySelector(`tr[data-edit="${code}"]`).hidden ^= 1; }
+      if (b.dataset.au === 'savedist') { const x = await call({ action: 'update_staff', code, districts: pickDist(tr) }); U.toast(x.ok ? 'บันทึกอำเภอแล้ว' : x.error, x.ok ? 'ok' : 'err'); if (x.ok) loadUsers(); }
+      if (b.dataset.au === 'pin') { const np = window.prompt('รหัสผ่านใหม่ของ ' + code + ' (อย่างน้อย 8 ตัว)'); if (!np) return; const x = await call({ action: 'update_staff', code, new_pin: np }); U.toast(x.ok ? 'รีเซ็ตรหัสผ่านแล้ว' : x.error, x.ok ? 'ok' : 'err'); }
+    };
+    box.onchange = async (e) => {
+      const i = e.target.closest('[data-au="active"]'); if (!i) return;
+      const code = i.closest('tr').dataset.code, x = await call({ action: 'update_staff', code, active: i.checked });
+      U.toast(x.ok ? (i.checked ? 'เปิดใช้งานแล้ว' : 'ปิดการใช้งานแล้ว') : x.error, x.ok ? 'ok' : 'err'); if (!x.ok) i.checked = !i.checked;
+    };
+  }
+
   function render() {
     const el = $('adminBody');
     if (!C.BACKEND_URL) {
@@ -52,7 +81,7 @@ KPP.Admin = (function () {
         e.preventDefault(); $('admMsg').textContent = 'กำลังตรวจสอบ…';
         const r = await call({ action: 'login', code: $('admCode').value.trim(), pin: $('admPin').value });
         if (!r.ok) { $('admMsg').textContent = r.error || 'เข้าสู่ระบบไม่สำเร็จ'; return; }
-        Object.assign(S, { token: r.token, role: r.role, name: r.name, settings: r.settings }); saveSession(); renderButton(); render(); applyMode();
+        Object.assign(S, { token: r.token, role: r.role, name: r.name, code: $('admCode').value.trim(), settings: r.settings }); saveSession(); renderButton(); render(); applyMode();
       });
       return;
     }
@@ -67,11 +96,29 @@ KPP.Admin = (function () {
         ${toggleRow('staff_can_view_parcels', 'ให้เจ้าหน้าที่ดูพิกัดแปลงได้', 'ปิด = เฉพาะแอดมิน')}
         ${toggleRow('staff_can_view_names', 'ให้เจ้าหน้าที่เห็นชื่อ (เมื่อเปิดแสดงชื่อ)', 'ค่าเริ่มต้น: ปิด')}
         <div class="row-gap" style="margin-top:8px"><button class="btn sm" id="admAudit">📜 ดูบันทึกการเข้าถึง</button></div><div id="admAuditOut"></div>` : '<p class="hint">เจ้าหน้าที่เห็นเฉพาะอำเภอที่ได้รับมอบหมาย (กำหนดในชีต KPP_PRIVATE แท็บ staff คอลัมน์ districts) · ข้อมูลส่วนบุคคลตามที่แอดมินเปิด</p>'}
+      ${adm ? `<h4>👥 ผู้ใช้งานระบบ</h4><div id="admUsers" class="hint">กำลังโหลดรายชื่อ…</div>
+        <details class="adm-add"><summary>➕ เพิ่มผู้ใช้งาน</summary>
+          <form id="admAddForm" class="adm-form">
+            <input id="auCode" placeholder="รหัสผู้ใช้ (อังกฤษ/ตัวเลข 3–30 ตัว)" autocomplete="off" required pattern="[A-Za-z0-9_.\-]{3,30}">
+            <input id="auName" placeholder="ชื่อ-สกุล / หน่วยงาน" autocomplete="off" required>
+            <input id="auPin" type="password" placeholder="รหัสผ่านชั่วคราว (อย่างน้อย 8 ตัว)" autocomplete="new-password" minlength="8" required>
+            <select id="auRole"><option value="staff">เจ้าหน้าที่ (เห็นเฉพาะอำเภอที่รับผิดชอบ)</option><option value="admin">แอดมิน (เห็นทุกอำเภอ + จัดการระบบ)</option></select>
+            <div class="hint">อำเภอที่รับผิดชอบ (เจ้าหน้าที่):</div><div class="adm-dist" id="auDist">${distBoxes([])}</div>
+            <div id="auMsg" class="hint" role="alert"></div><button class="btn primary sm" type="submit">เพิ่มผู้ใช้</button></form></details>` : ''}
       <h4>🔑 เปลี่ยนรหัสผ่านของฉัน</h4>
       <form id="admPinForm" class="adm-form"><input id="admOldPin" type="password" placeholder="รหัสเดิม" autocomplete="current-password" required>
         <input id="admNewPin" type="password" placeholder="รหัสใหม่ (อย่างน้อย 8 ตัว)" autocomplete="new-password" minlength="8" required>
         <div id="admPinMsg" class="hint" role="alert"></div><button class="btn sm" type="submit">บันทึกรหัสใหม่</button></form>`;
     $('admLogout').onclick = async () => { await call({ action: 'logout', token: S.token }); Object.assign(S, { token: null, role: null, name: '', rows: null, mode: 'grid', cache: {} }); try { sessionStorage.removeItem(KEY); } catch (e) { /* ไม่เก็บ */ } clearLayer(); renderButton(); render(); };
+    if (adm) {
+      loadUsers();
+      $('admAddForm').addEventListener('submit', async (e) => {
+        e.preventDefault(); $('auMsg').textContent = 'กำลังเพิ่ม…';
+        const r = await call({ action: 'add_staff', code: $('auCode').value.trim(), name: $('auName').value.trim(), pin: $('auPin').value, role: $('auRole').value, districts: pickDist($('auDist')) });
+        $('auMsg').textContent = r.ok ? 'เพิ่มผู้ใช้แล้ว — แจ้งรหัสชั่วคราวให้ผู้ใช้และให้เปลี่ยนรหัสหลังเข้าสู่ระบบ' : (r.error || 'ไม่สำเร็จ');
+        if (r.ok) { $('admAddForm').reset(); loadUsers(); }
+      });
+    }
     $('admPinForm').addEventListener('submit', async (e) => {
       e.preventDefault(); $('admPinMsg').textContent = 'กำลังบันทึก…';
       const r = await call({ action: 'change_pin', old_pin: $('admOldPin').value, new_pin: $('admNewPin').value });
@@ -117,18 +164,27 @@ KPP.Admin = (function () {
     rows.forEach((p) => {
       if (!U.isNum(+p.lat) || !U.isNum(+p.lng) || !+p.lat) return;
       const m = L.circleMarker([+p.lat, +p.lng], { renderer: S.renderer, radius: rows.length > 6000 ? 3 : 4, color: '#065F46', weight: 1, fillColor: '#10b981', fillOpacity: 0.8 });
-      m.bindPopup(() => `<div class="pp"><h4>แปลง ${U.esc(p.key || '')}</h4><table>${[['พันธุ์', p.variety], ['พื้นที่', p.rai ? U.fmt(+p.rai) + ' ไร่' : ''], ['วันปลูก', p.plant_date], ['วันเก็บเกี่ยว', p.harvest_date], ['ชื่อ', p.owner_name], ['ที่อยู่/หมายเหตุ', p.name_note], ['โทร', p.phone]].filter((x) => x[1]).map(([k, v]) => `<tr><td>${k}</td><td>${U.esc(v)}</td></tr>`).join('')}</table><div class="hint">ข้อมูลสำหรับเจ้าหน้าที่ — ห้ามเผยแพร่</div></div>`);
+      m.bindPopup(() => `<div class="pp"><h4>แปลง ${U.esc(p.key || '')}</h4><table>${[['พันธุ์', p.variety], ['พื้นที่', p.rai ? U.fmt(+p.rai) + ' ไร่' : ''], ['วันปลูก', p.plant_date], ['วันเก็บเกี่ยว', p.harvest_date]].filter((x) => x[1]).map(([k, v]) => `<tr><td>${k}</td><td>${U.esc(v)}</td></tr>`).join('')}</table>
+        <div class="pp-detail" data-key="${U.esc(p.key)}"><button class="btn sm primary" data-detail="${U.esc(p.key)}">🔓 ดูข้อมูลทั้งหมด${isAdmin() ? ' (รวมข้อมูลส่วนบุคคล)' : ''}</button></div><div class="hint">ข้อมูลสำหรับเจ้าหน้าที่ — ห้ามเผยแพร่ · การเปิดดูถูกบันทึก</div></div>`);
       g.addLayer(m);
     });
     S.layer = g.addTo(KPP.Map.map);
     setInfo(`แสดงพิกัดแปลง ${U.fmt(rows.length)} แปลง${cur.tambon ? ' (ตำบลที่เลือก)' : cur.district ? ' (อำเภอที่เลือก)' : ''}${S.names ? ' · มีชื่อ' : ''}`);
   }
 
+  const LBL = { key: 'รหัสกิจกรรม', year: 'ปีเพาะปลูก', district: 'อำเภอ (รหัส)', tambon: 'ตำบล (รหัส)', moo: 'หมู่', lat: 'ละติจูด', lng: 'ลองจิจูด', rai: 'พื้นที่ (ไร่)', variety: 'พันธุ์', plant_date: 'วันปลูก', harvest_date: 'วันเก็บเกี่ยว', owner_name: 'ชื่อ-สกุล', phone: 'เบอร์โทร', note: 'ที่อยู่ / เอกสารสิทธิ์' };
+  async function showDetail(btn) {
+    const box = btn.closest('.pp-detail'); box.innerHTML = '<span class="hint">กำลังโหลด…</span>';
+    const r = await call({ action: 'parcel_detail', key: btn.dataset.detail, year: KPP.App.state.year });
+    if (!r.ok) { box.innerHTML = `<span class="hint">${U.esc(r.error || 'ไม่สำเร็จ')}${/parcel_detail|ไม่รู้จัก/.test(r.error || '') ? ' (backend ยังไม่ได้ Deploy เวอร์ชันล่าสุด)' : ''}</span>`; return; }
+    box.innerHTML = `<table class="pp-full">${Object.entries(r.record).filter(([, v]) => v !== '' && v !== null).map(([k, v]) => `<tr><td>${LBL[k] || k}</td><td>${U.esc(v)}</td></tr>`).join('')}</table>`;
+  }
   function init() {
     restore(); renderButton();
+    KPP.Map.map.on('popupopen', (e) => { const b = e.popup.getElement() && e.popup.getElement().querySelector('[data-detail]'); if (b) b.addEventListener('click', () => showDetail(b)); });
     const b = $('btnAdmin'); if (b) b.addEventListener('click', open);
     $('adminModal').addEventListener('click', (e) => { if (e.target.id === 'adminModal' || e.target.closest('[data-close]')) close(); });
-    if (loggedIn()) call({ action: 'whoami' }).then((r) => { if (r.ok) { S.settings = r.settings; S.role = r.user.role; renderButton(); } else { S.token = null; try { sessionStorage.removeItem(KEY); } catch (e) { /* ไม่เก็บ */ } renderButton(); } });
+    if (loggedIn()) call({ action: 'whoami' }).then((r) => { if (r.ok) { S.settings = r.settings; S.role = r.user.role; S.code = r.user.code; renderButton(); } else { S.token = null; try { sessionStorage.removeItem(KEY); } catch (e) { /* ไม่เก็บ */ } renderButton(); } });
   }
   return { init, open, loggedIn, isAdmin, call, refresh() { if (loggedIn() && S.mode === 'parcel') applyMode(); } };
 })();
