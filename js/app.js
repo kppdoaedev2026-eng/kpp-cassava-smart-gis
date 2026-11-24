@@ -26,6 +26,17 @@ KPP.App = (function () {
     $('layerPanel').classList.add('collapsed');
     update(true);
     loadPlotMonitor();
+    // แผนที่เต็มจอ: ถ้ากรอบแผนที่ยังไม่มีขนาดตอนเริ่ม (เช่น หน้าต่างอยู่เบื้องหลัง) ให้ปรับขนาดและจัดมุมมองใหม่เมื่อได้ขนาดจริง
+    if (window.ResizeObserver) {
+      let w0 = M.map.getSize().x, h0 = M.map.getSize().y;
+      new ResizeObserver(() => {
+        const el = document.getElementById('map'), w = el.clientWidth, h = el.clientHeight;
+        if (w === w0 && h === h0) return;
+        const wasEmpty = !w0 || !h0; w0 = w; h0 = h;
+        M.map.invalidateSize();
+        if (wasEmpty && w && h) M.fitScope();
+      }).observe(document.getElementById('map'));
+    }
   }
 
   /* ---------- filters ---------- */
