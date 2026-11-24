@@ -12,7 +12,7 @@ KPP.CONFIG = {
   CMD_GOAL: { reduce: 0.30, cuttingsPerRai: 1600, stalksPerRai: 400, multiplyRatio: 10, supportFromYear: 2569 },   // 1 ลำ ≈ 4 ท่อน
   // ระบบติดตามแปลงส่งเสริม CassavaPlot Monitor (Apps Script) — ดึงสรุปสาธารณะ ?api=public (ดู tools/apps_script_public_api.gs)
   // KPP Backend (Apps Script + Google Sheet ส่วนตัว) สำหรับเข้าสู่ระบบแอดมิน/เจ้าหน้าที่ — ใส่ URL /exec หลังติดตั้ง tools/apps_script_kpp_backend.gs
-  BACKEND_URL: '',
+  BACKEND_URL: 'https://script.google.com/macros/s/AKfycbzsDC_9sW8uspKq0alv4DVjAOHkpzFde-9hvj49m0wLqxJ6uNCzPyCYuDjv5EXRYPrd/exec',
   // App Hub กรมส่งเสริมการเกษตร (รายการแอป)
   APP_HUB_URL: 'https://script.google.com/macros/s/AKfycbxrj4O1p9v71-hTS-SHPGbs94CIwGXuFX7iegXW6ksFpE1coXD5Qt7ODRdrtoBqpQAl/exec',
   PLOT_MONITOR_URL: 'https://script.google.com/macros/s/AKfycbzrQJEFODEicBIC_0kmx17652OxjE0GK_3NRm43db2beM8tr2uutQWssHiy6KkpBDWlqw/exec',
@@ -32,7 +32,7 @@ KPP.CONFIG = {
   DEVELOPER: 'นายดนุพน สุมังคะละ',
   DEVELOPER_TITLE: 'นักวิชาการส่งเสริมการเกษตรปฏิบัติการ',
   DEVELOPER_UNIT: 'กลุ่มส่งเสริมและพัฒนาการผลิต สำนักงานเกษตรจังหวัดกำแพงเพชร',
-  VERSION: '4.6.1',
+  VERSION: '4.6.2',
 
   // การจัดกลุ่มพันธุ์ต่อโรคใบด่าง (ปรับ/เพิ่มพันธุ์ใหม่ได้ใน นำเข้าข้อมูล › ตั้งค่า)
   // ชื่อพันธุ์จับคู่แบบไม่สนคำว่า "พันธุ์"/"มันสำปะหลัง"/ช่องว่าง และรองรับชื่อเรียกอื่น (VARIETY_ALIASES)
