@@ -13,6 +13,9 @@ window.KPPSmoke = (function () {
     win.addEventListener('unhandledrejection', (e) => errs.push('rejection: ' + (e.reason && e.reason.message)));
     const fail = (where, what) => fails.push(where + ' → ' + what);
     const stk = (e) => String(e.stack).split(String.fromCharCode(10)).slice(1, 3).join(' | ').slice(0, 220);
+    const setSel = (id, v) => { const el = doc.getElementById(id); el.value = v; el.dispatchEvent(new win.Event('change', { bubbles: true })); };
+    const goMod = (m) => doc.querySelector('.modbar .mod[data-mod="' + m + '"]').click();
+    const goTab = (t) => doc.querySelector('#sideTabs .tab[data-tab="' + t + '"]').click();
     const BAD = /\bNaN\b|\bundefined\b|\bInfinity\b|\[object Object\]/;
 
     function check(where) {
@@ -31,11 +34,11 @@ window.KPPSmoke = (function () {
     const districts = [...doc.getElementById('fDistrict').options].map((o) => o.value);   // '' = ทั้งจังหวัด
     for (const m of mods) {
       for (const d of districts) {
-        try { App.selectDistrict(d || null); App.setModule(m); } catch (e) { fail(`${m}/${d || 'ทั้งจังหวัด'}`, 'เปลี่ยนขอบเขตแล้วเกิดข้อผิดพลาด: ' + e.message + ' @ ' + stk(e)); continue; }
+        try { setSel('fDistrict', d || ''); goMod(m); } catch (e) { fail(`${m}/${d || 'ทั้งจังหวัด'}`, 'เปลี่ยนขอบเขตแล้วเกิดข้อผิดพลาด: ' + e.message + ' @ ' + stk(e)); continue; }
         await sleep(120);
         const tabs = [...doc.querySelectorAll('#sideTabs .tab')].map((b) => b.dataset.tab);
         for (const t of tabs) {
-          try { App.showTab(t); } catch (e) { fail(`${m}/${t}/${d || 'ทั้งจังหวัด'}`, 'เปิดแท็บแล้วเกิดข้อผิดพลาด: ' + e.message); continue; }
+          try { goTab(t); } catch (e) { fail(`${m}/${t}/${d || 'ทั้งจังหวัด'}`, 'เปิดแท็บแล้วเกิดข้อผิดพลาด: ' + e.message); continue; }
           await sleep(60);
           check(`${m}/${t}/${d || 'ทั้งจังหวัด'}`);
         }
@@ -43,16 +46,16 @@ window.KPPSmoke = (function () {
         if (d) {
           const tb = [...doc.getElementById('fTambon').options].map((o) => o.value).filter(Boolean).slice(0, 2);
           for (const tcode of tb) {
-            try { App.selectTambon(tcode); } catch (e) { fail(`${m}/${d}/ต.${tcode}`, 'เลือกตำบลแล้วเกิดข้อผิดพลาด: ' + e.message + ' @ ' + stk(e)); continue; }
+            try { setSel('fTambon', tcode); } catch (e) { fail(`${m}/${d}/ต.${tcode}`, 'เลือกตำบลแล้วเกิดข้อผิดพลาด: ' + e.message + ' @ ' + stk(e)); continue; }
             await sleep(100);
             const cur = doc.querySelector('#sideTabs .tab.active'); check(`${m}/${cur ? cur.dataset.tab : '?'}/${d}/ต.${tcode}`);
           }
-          App.selectTambon(null);
+          setSel('fTambon', '');
         }
         if (progress) progress(m, d, n);
       }
     }
-    App.selectDistrict(null); App.setModule('overview'); await sleep(200);
+    setSel('fDistrict', ''); goMod('overview'); await sleep(200);
 
     /* ตัวเลขหลักต้องสอดคล้องกัน */
     const y = 2569, tot = DA.agg(y, {}), ds = DA.D.districts.map((d) => DA.agg(y, { district: d.code }));
