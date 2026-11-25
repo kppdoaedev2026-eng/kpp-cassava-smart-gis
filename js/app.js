@@ -275,7 +275,7 @@ KPP.App = (function () {
         P.list.map((r) => `<tr><td class="l">${U.esc(dn(r.d))}</td><td>${U.fmt(r.pmPlots)}</td><td>${U.fmt(r.pmRai, 1)}</td><td>${U.fmt(r.oPlots)}</td><td>${U.fmt(r.oRai, 1)}</td><td><b>${U.fmt(r.pmPlots + r.oPlots)}</b></td><td><b>${U.fmt(r.pmRai + r.oRai, 1)}</b></td><td class="l" style="white-space:normal;font-size:.75rem">${[...new Set([...r.projects].map((p) => p.replace(/\s*\(.*$/, '').replace(/\s*—.*$/, '').slice(0, 48)))].map(U.esc).join(' · ') || '–'}</td></tr>`).join('')
       }<tr class="total"><td class="l"><b>รวม</b></td><td>${U.fmt(t.pmPlots)}</td><td>${U.fmt(t.pmRai, 1)}</td><td>${U.fmt(t.oPlots)}</td><td>${U.fmt(t.oRai, 1)}</td><td><b>${U.fmt(t.plots)}</b></td><td><b>${U.fmt(t.rai, 1)}</b></td><td></td></tr></tbody></table></div>
       <p class="hint">แปลงส่งเสริม CassavaPlot: ${P.live ? 'ยอดล่าสุดจากระบบ' + (P.pmAt ? ' (' + U.esc(String(P.pmAt)) + ')' : '') : 'ทะเบียนแปลงส่งเสริม (ไฟล์)'} · โครงการอื่นแยกกลุ่มพันธุ์: ต้านทาน ${U.fmt(t.oRes, 1)} ไร่ · ทนทาน ${U.fmt(t.oTol, 1)} ไร่ · ทั่วไป ${U.fmt(t.oGen, 1)} ไร่ · เกษตรกร ${U.fmt(t.oFarmers)} ราย
-        · ไม่นับซ้ำ ${U.fmt(t.dupRai, 1)} ไร่ จากโครงการที่ลงทะเบียนแปลงใน CassavaPlot แล้ว (${MAP.map((m) => U.esc(m.match) + ' → ' + U.esc(m.project)).join(' · ')})
+        · ไม่นับซ้ำ ${U.fmt(t.dupRai, 1)} ไร่ จากโครงการที่ลงทะเบียนแปลงใน CassavaPlot แล้ว (${MAP.map((m) => U.esc(m.project)).join(' · ')})
         · จำนวนแปลงของโครงการอื่นใช้จำนวนแปลงที่ระบุ ถ้าไม่ระบุใช้จำนวนเกษตรกร</p>`;
   }
 
