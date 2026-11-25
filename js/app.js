@@ -136,7 +136,7 @@ KPP.App = (function () {
           const sp = supportSum(state.district), dn = doneTotal(state.district), yrs = supportByYear(state.district), sl = (c) => `<br><b>สนับสนุนท่อนพันธุ์สะสม ${U.fmt(c.rai, 1)} ไร่</b> · ${U.fmtCompact(c.stalks)} ลำ${c.farmers ? ' · ' + U.fmt(c.farmers) + ' ราย' : ''}`;
           return card('#1a7f37', 'พันธุ์ต้านทาน', U.fmt(a.resistant), 'ไร่', `ในผังแปลง ${U.pct(a.resistantPct, 2)} · อิทธิ 1–3${sl(sp.cls.resistant)} ${bar(a.resistantPct / 0.3, '#1a7f37')}`, a.src.resist)
             + card('#8fd16a', 'พันธุ์ทนทาน', U.fmt(a.tolerant), 'ไร่', `ในผังแปลง ${U.pct(a.tolerantPct)} · ห้วยบง 60, เกษตรศาสตร์ 50, ระยอง 72${sl(sp.cls.tolerant)} ${bar(a.tolerantPct / 0.3, '#5aa832')}`, a.src.resist)
-            + (rp ? card('#0f766e', 'แปลงส่งเสริมพันธุ์ต้านทาน', U.fmt(a.projPlots), 'แปลง', `${U.fmt(a.projRai, 1)} ไร่ · ท่อนพันธุ์ ${U.fmtCompact(a.projCuttings)} ท่อน<br>สนับสนุนท่อนพันธุ์สะสม ${yrs.length ? 'ปี ' + yrs[0].year + '–' + yrs[yrs.length - 1].year : ''} (ต้านทาน+ทนทาน) ${U.fmt(sp.cls.resistant.rai + sp.cls.tolerant.rai, 1)} ไร่ · ${U.fmtCompact(sp.cls.resistant.stalks + sp.cls.tolerant.stalks)} ลำ<br><b>ดำเนินการแล้วรวมสะสม ≈ ${U.fmt(dn.lo, 1)} ไร่</b> <small>(ช่วง ${U.fmt(dn.lo, 1)}–${U.fmt(dn.hi, 1)} · ตัดซ้ำสนับสนุน/แปลงส่งเสริมระดับอำเภอ)</small><br>ปลูกจริงในผังแปลง ${U.fmt(a.resist, 1)} ไร่ <small>(สถานะปัจจุบัน ไม่นำมาบวก)</small>`, 'PROJECT') : '');
+            + (rp ? (() => { const pg = programYear(state.district).tot; return card('#0f766e', 'แปลงส่งเสริม + สนับสนุนพันธุ์ ปี 2569', U.fmt(pg.plots), 'แปลง', `<b>${U.fmt(pg.rai, 1)} ไร่</b> = แปลงส่งเสริม CassavaPlot ${U.fmt(pg.pmPlots)} แปลง (${U.fmt(pg.pmRai, 1)} ไร่) + โครงการอื่น ${U.fmt(pg.oPlots)} แปลง (${U.fmt(pg.oRai, 1)} ไร่)<br>สนับสนุนท่อนพันธุ์สะสม ${yrs.length ? 'ปี ' + yrs[0].year + '–' + yrs[yrs.length - 1].year : ''} (ต้านทาน+ทนทาน) ${U.fmt(sp.cls.resistant.rai + sp.cls.tolerant.rai, 1)} ไร่ · ${U.fmtCompact(sp.cls.resistant.stalks + sp.cls.tolerant.stalks)} ลำ<br>ปลูกจริงในผังแปลง ${U.fmt(a.resist, 1)} ไร่ <small>(สถานะปัจจุบัน ไม่นำมาบวก)</small>`, 'PROJECT'); })() : '');
         })()
         + (() => {
           const g = cmdGoal(state.district);
@@ -239,6 +239,42 @@ KPP.App = (function () {
   const thd = (d) => (d ? new Date(d).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : '–');
   const vchip = (v) => { const c = C.VARIETY_CLASSES.find((x) => x.key === DA.varietyClass(v)); return `${U.esc(v)} <span class="vclass-chip" style="background:${c.color}">${c.label}</span>`; };
 
+  /* ---------- แปลงส่งเสริม + โครงการสนับสนุนท่อนพันธุ์อื่น ปีที่กำหนด (ตัดซ้ำตามรายชื่อโครงการ) ----------
+     แปลงส่งเสริม = ทะเบียนแปลง CassavaPlot (ไม่รวมแปลงที่ยกเลิก) · โครงการอื่น = ทะเบียนการสนับสนุนท่อนพันธุ์ปีเดียวกัน
+     โครงการในทะเบียนสนับสนุนที่ลงทะเบียนแปลงใน CassavaPlot แล้ว (C.SUPPORT_IN_PLOTMON) ไม่นับซ้ำ
+     จำนวนแปลงของโครงการอื่น = จำนวนแปลงที่ระบุ ถ้าไม่ระบุใช้จำนวนเกษตรกร (1 ราย ≈ 1 แปลง) ถ้าไม่ระบุทั้งคู่นับ 1 แปลงต่อรายการ */
+  function programYear(dcode, year = 2569) {
+    const S = DA.D.rep.support, rp = DA.D.rep.resist_plots, MAP = C.SUPPORT_IN_PLOTMON || [];
+    const by = {};
+    const row = (d) => by[d] || (by[d] = { d, pmPlots: 0, pmRai: 0, oPlots: 0, oRai: 0, oFarmers: 0, oRes: 0, oTol: 0, oGen: 0, dupRai: 0, projects: new Set() });
+    if (rp) Object.entries(rp.tambons).forEach(([t, v]) => { const r = row(t.slice(0, 4)); r.pmPlots += v.plots; r.pmRai += v.rai; });
+    ((S && S.records) || []).filter((r) => r.year === year).forEach((r) => {
+      const x = row(r.d || '_');
+      if (MAP.some((m) => r.project.includes(m.match))) { x.dupRai += r.rai; return; }
+      x.oPlots += r.plots || r.farmers || 1; x.oRai += r.rai; x.oFarmers += r.farmers || 0; x.projects.add(r.project);
+      const k = DA.varietyClass(r.variety);
+      if (k === 'resistant') x.oRes += r.rai; else if (k === 'tolerant') x.oTol += r.rai; else x.oGen += r.rai;
+    });
+    const list = Object.values(by).filter((r) => !dcode || r.d === dcode)
+      .sort((a, b) => (b.pmRai + b.oRai) - (a.pmRai + a.oRai));
+    const tot = list.reduce((t, r) => { ['pmPlots', 'pmRai', 'oPlots', 'oRai', 'oFarmers', 'oRes', 'oTol', 'oGen', 'dupRai'].forEach((k) => { t[k] += r[k]; }); return t; },
+      { pmPlots: 0, pmRai: 0, oPlots: 0, oRai: 0, oFarmers: 0, oRes: 0, oTol: 0, oGen: 0, dupRai: 0 });
+    tot.plots = tot.pmPlots + tot.oPlots; tot.rai = tot.pmRai + tot.oRai;
+    return { list, tot, year };
+  }
+  function programTableHtml() {
+    const P = programYear(state.district), dn = (d) => (d === '_' ? 'ไม่ระบุอำเภอ' : (DA.D.dByCode[d] || {}).name || d);
+    if (!P.list.length) return '';
+    const t = P.tot, MAP = C.SUPPORT_IN_PLOTMON || [];
+    return `<h4 class="goal-h">📋 แปลงส่งเสริม + โครงการสนับสนุนท่อนพันธุ์อื่น ปี ${P.year} (รายอำเภอ)</h4>
+      <div class="table-wrap"><table class="risk"><thead><tr><th>อำเภอ</th><th>แปลงส่งเสริม CassavaPlot<br>(แปลง)</th><th>ไร่</th><th>โครงการอื่น<br>(แปลง)</th><th>ไร่</th><th>รวม (แปลง)</th><th>รวม (ไร่)</th><th>โครงการอื่น</th></tr></thead><tbody>${
+        P.list.map((r) => `<tr><td class="l">${U.esc(dn(r.d))}</td><td>${U.fmt(r.pmPlots)}</td><td>${U.fmt(r.pmRai, 1)}</td><td>${U.fmt(r.oPlots)}</td><td>${U.fmt(r.oRai, 1)}</td><td><b>${U.fmt(r.pmPlots + r.oPlots)}</b></td><td><b>${U.fmt(r.pmRai + r.oRai, 1)}</b></td><td class="l" style="white-space:normal;font-size:.75rem">${[...r.projects].map((p) => U.esc(p.replace(/\s*\(.*$/, '').slice(0, 40))).join(' · ') || '–'}</td></tr>`).join('')
+      }<tr class="total"><td class="l"><b>รวม</b></td><td>${U.fmt(t.pmPlots)}</td><td>${U.fmt(t.pmRai, 1)}</td><td>${U.fmt(t.oPlots)}</td><td>${U.fmt(t.oRai, 1)}</td><td><b>${U.fmt(t.plots)}</b></td><td><b>${U.fmt(t.rai, 1)}</b></td><td></td></tr></tbody></table></div>
+      <p class="hint">โครงการอื่นแยกกลุ่มพันธุ์: ต้านทาน ${U.fmt(t.oRes, 1)} ไร่ · ทนทาน ${U.fmt(t.oTol, 1)} ไร่ · ทั่วไป ${U.fmt(t.oGen, 1)} ไร่ · เกษตรกร ${U.fmt(t.oFarmers)} ราย
+        · ไม่นับซ้ำ ${U.fmt(t.dupRai, 1)} ไร่ จากโครงการที่ลงทะเบียนแปลงใน CassavaPlot แล้ว (${MAP.map((m) => U.esc(m.match) + ' → ' + U.esc(m.project)).join(' · ')})
+        · จำนวนแปลงของโครงการอื่นใช้จำนวนแปลงที่ระบุ ถ้าไม่ระบุใช้จำนวนเกษตรกร</p>`;
+  }
+
   function supportHtml() {
     const S = DA.D.rep.support, G = C.CMD_GOAL;
     if (!S) return '<p class="hint">ยังไม่มีข้อมูลการสนับสนุนท่อนพันธุ์ — วางไฟล์ในโฟลเดอร์ "สนับสนุนพันธุ์มัน" แล้วรัน tools/build_reports.py</p>';
@@ -264,6 +300,7 @@ KPP.App = (function () {
         <div><span>พันธุ์กลุ่มทั่วไป/อ่อนแอที่สนับสนุน</span><b>${U.fmt(otherRai, 1)}</b> ไร่ <small>ไม่นับเข้าเป้าหมาย</small></div>
       </div>
       <div class="table-wrap"><table class="risk"><thead><tr><th>ปี</th><th>ต้านทาน (ไร่)</th><th>ทนทาน (ไร่)</th><th>รวมต้านทาน+ทนทาน</th><th>ลำ</th><th>สะสม (ไร่)</th><th>พันธุ์อื่น (ไร่)</th></tr></thead><tbody>${supportByYear(state.district).map((o) => `<tr><td>${o.year || '–'}</td><td>${U.fmt(o.res, 1)}</td><td>${U.fmt(o.tol, 1)}</td><td><b>${U.fmt(o.res + o.tol, 1)}</b></td><td>${U.fmt(o.stalks)}</td><td><b>${U.fmt(o.cum, 1)}</b></td><td>${U.fmt(o.oth, 1)}</td></tr>`).join('')}</tbody></table></div>
+      ${programTableHtml()}
       <p class="hint">พันธุ์: ${Object.entries(vt).sort((a, b) => b[1] - a[1]).map(([v, x]) => `${vchip(v)} ${U.fmt(x, 1)} ไร่`).join(' · ')}</p>
       <div class="table-wrap"><table class="risk"><thead><tr><th>โครงการ/แหล่งสนับสนุน</th><th>ปี</th><th>อำเภอ</th><th>พันธุ์</th><th>เกษตรกร</th><th>ไร่</th><th>ลำ</th></tr></thead><tbody>${
         rows.map((p) => `<tr><td class="l" style="white-space:normal">${U.esc(p.project)}</td><td>${[...p.years].sort().join(', ')}</td><td class="l" style="white-space:normal">${[...p.districts].map(U.esc).join(', ')}</td>
