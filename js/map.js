@@ -711,7 +711,11 @@ KPP.Map = (function () {
       if (hv) rows.push(['กำหนดเก็บเกี่ยว', `${thd(hv)} · อายุเก็บเกี่ยว ${cycM.toFixed(1)} เดือน${left !== null && left >= 0 ? ` · อีก ${left} วัน` : ''}`]);
       if (cycM !== null && cycM < 8) { recs.push(['warn', `กำหนดเก็บเกี่ยวที่อายุ ${cycM.toFixed(1)} เดือน (< 8 เดือน) ผลผลิตและเชื้อแป้งมักต่ำ — ถ้าไม่มีความเสี่ยงน้ำท่วมควรเลื่อนให้ถึง 10–12 เดือน`]); score += 1; }
       if (left !== null && left >= 0 && left <= 60) recs.push(['info', `ใกล้เก็บเกี่ยว (${left} วัน) — ตรวจเชื้อแป้ง วางแผนขาย และคัดลำต้นสะอาดเก็บไว้ทำพันธุ์`]);
-      if (DA.ageMonthsAtPeak && p.plant) { const ap = DA.ageMonthsAtPeak(String(p.plant).slice(0, 7)); if (ap !== null && ap >= 0 && ap < C.EARLY_HARVEST_MIN_MONTHS) p._youngAtFlood = ap; }
+      // ช่วงน้ำท่วมสูงสุดครั้งถัดไป (C.FLOOD_PEAK) ที่ยังไม่ผ่าน และพืชยังไม่ถึงกำหนดเก็บเกี่ยว
+      const [fm, fd] = C.FLOOD_PEAK.split('-').map(Number);
+      let peak = new Date(now.getFullYear(), fm - 1, fd); if (peak < now) peak = new Date(now.getFullYear() + 1, fm - 1, fd);
+      const ap = (peak - pl) / MS_DAY / 30.44;
+      if (ap >= 0 && ap < C.EARLY_HARVEST_MIN_MONTHS && (!hv || hv > peak)) p._youngAtFlood = Math.max(0, Math.round(ap));
     }
     // 3) สถานการณ์ใบด่างของอำเภอ
     if (dcode) {
@@ -733,7 +737,7 @@ KPP.Map = (function () {
     const rrL = rr >= DA.RR_BREAKS[2] ? 'สูงมาก' : rr >= DA.RR_BREAKS[1] ? 'สูง' : rr >= DA.RR_BREAKS[0] ? 'ปานกลาง' : 'ต่ำ';
     rows.push(['เสี่ยงรากเน่าโคนเน่า', `${rr}/100 (${rrL})${rainy ? ' · ปลูกฤดูฝน' : ''}`]);
     if (rr >= DA.RR_BREAKS[1]) { recs.push(['warn', `เสี่ยงรากเน่าโคนเน่า${rrL} — ยกร่องสูง ระบายน้ำ แช่ท่อนพันธุ์ด้วยไตรโคเดอร์มาก่อนปลูก${nY >= 2 ? ' และหลีกเลี่ยงการปลูกช่วงต้นฤดูฝน' : ''}`]); score += 1; }
-    if (p._youngAtFlood !== undefined && nY >= 2) { recs.push(['crit', `ตำบลน้ำท่วมซ้ำซากและพืชจะอายุเพียง ${p._youngAtFlood} เดือนช่วงน้ำท่วมสูงสุด (ต.ค.) — เสี่ยงต้องเก็บเกี่ยวก่อนกำหนด`]); score += 2; }
+    if (p._youngAtFlood !== undefined && nY >= 2) { recs.push(['crit', `ตำบลน้ำท่วมซ้ำซากและพืชจะอายุเพียง ${p._youngAtFlood} เดือนเมื่อถึงช่วงน้ำท่วมสูงสุดครั้งถัดไป — เสี่ยงต้องเก็บเกี่ยวก่อนกำหนด`]); score += 2; }
     // 5) ศูนย์ช่วยเหลือใกล้สุด
     const pest = window.KPP_NETWORKS && isFinite(lat) ? DA.nearest(lat, lng, window.KPP_NETWORKS.pest.rows) : null;
     if (pest) rows.push(['ศจช. ใกล้สุด', `${U.esc(pest.row.name)} · ${U.fmt(pest.km, 1)} กม.`]);
