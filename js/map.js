@@ -84,7 +84,11 @@ KPP.Map = (function () {
     map.on('zoomend moveend', () => { drawParcels(); toggleTambonLabels(); });
     map.on('zoomend', () => { const hi = map.getZoom() >= 12; if (S && hi !== lastHi) { lastHi = hi; buildLegend(); } });
     map.on('click', onMapClick);
-    map.getContainer().addEventListener('click', clickThrough, true);   // คลิกทะลุชั้น canvas ที่ไม่มีจุดตรงตำแหน่งนั้น
+    map.getContainer().addEventListener('click', clickThrough, true);
+    map.on('popupopen', (e) => {
+      const el = e.popup.getElement(), b = el && el.querySelector('[data-copyll]');
+      if (b) b.onclick = () => { const v = b.dataset.copyll; (navigator.clipboard ? navigator.clipboard.writeText(v) : Promise.reject()).then(() => { b.textContent = '✓ คัดลอกแล้ว'; }, () => window.prompt('คัดลอกพิกัด', v)); };
+    });   // คลิกทะลุชั้น canvas ที่ไม่มีจุดตรงตำแหน่งนั้น
     G.floodRenderer.addTo(map);
     injectHatch(G.floodRenderer._container);
     loadSoilSampler();
@@ -174,16 +178,8 @@ KPP.Map = (function () {
     L_.choro.opacity = 0.8;
     showQuestion(p.q);
   }
-  function showQuestion(q) {
-    if (!map) { setTimeout(() => showQuestion(q), 300); return; }
-    let el = document.getElementById('mapQ');
-    if (!el) {
-      el = document.createElement('div'); el.id = 'mapQ'; el.className = 'map-q';
-      map.getContainer().appendChild(el); L.DomEvent.disableClickPropagation(el);
-    }
-    el.innerHTML = `<span class="map-q-tag">คำถาม</span><b>${U.esc(q)}</b><button type="button" data-act="reset" title="กลับเป็นชุดชั้นข้อมูลมาตรฐานของโมดูลนี้ (หลังเปิด/ปิดชั้นเอง)">คืนค่าชุดมาตรฐาน</button>`;
-    el.querySelector('[data-act=reset]').onclick = () => KPP.App.setModule(module);
-  }
+  let curQ = '';
+  function showQuestion(q) { curQ = q; const old = document.getElementById('mapQ'); if (old) old.remove(); }
   const tambonLevel = () => module === 'rootrot' || module === 'soil';
 
   /* ---------- classification ---------- */
@@ -684,6 +680,79 @@ KPP.Map = (function () {
     if (module === 'rootrot') { const r = P.rr[i]; return r >= 0.62 ? '#b2182b' : r >= 0.5 ? '#f46d43' : r >= 0.35 ? '#f2c12e' : '#1a9850'; }
     return VCOL[VCODE2KEY[P.res[i]]];
   }
+  /* ---------- วิเคราะห์แปลงอัตโนมัติ (popup แปลงของเจ้าหน้าที่/แปลงเรียนรู้) ----------
+     รวมข้อมูลรอบแปลงที่ระบบมีอยู่แล้ว: กลุ่มพันธุ์ต่อโรคใบด่าง · อายุพืช/กำหนดเก็บเกี่ยว · สถานการณ์ระบาดของอำเภอ
+     · ประวัติน้ำท่วมของตำบล · ความเหมาะสมดิน ณ จุดแปลง (LDD) · ความเสี่ยงรากเน่าโคนเน่า · ศจช. ใกล้สุด · ผลผลิต/มูลค่าคาดการณ์
+     แล้วสรุปเป็นคำแนะนำตามเกณฑ์ (ไม่ใช่การวินิจฉัย — ต้องตรวจแปลงจริงประกอบ) */
+  const MS_DAY = 864e5;
+  const pdate = (s) => { const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/); if (!m) return null; let y = +m[1]; if (y > 2400) y -= 543; return new Date(y, +m[2] - 1, +m[3]); };
+  const thd = (d) => d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' });
+  function plotInsight(p) {
+    const lat = +p.lat, lng = +p.lng, rai = +p.rai || 0;
+    const dcode = p.dcode || (p.tcode ? String(p.tcode).slice(0, 4) : null);
+    const tcode = p.tcode || (dcode && p.tambonName ? DA.resolveTambon(dcode, p.tambonName) : null);
+    const t = DA.D.tambons[tcode] || {}, d = DA.D.dByCode[dcode] || {};
+    const vk = p.variety ? DA.varietyClass(p.variety) : null;
+    const vc = C.VARIETY_CLASSES.find((v) => v.key === vk);
+    const chips = [], rows = [], recs = [];
+    let score = 0;
+    // 1) กลุ่มพันธุ์
+    chips.push(vc ? `<span class="vclass-chip" style="background:${vc.color}">${vc.label}</span>` : '<span class="vclass-chip" style="background:#94a3b8">กลุ่มพันธุ์ไม่ทราบ</span>');
+    // 2) อายุพืชและกำหนดเก็บเกี่ยว
+    const pl = pdate(p.plant), hv = pdate(p.harvest), now = new Date();
+    if (pl) {
+      const ageM = (now - pl) / MS_DAY / 30.44, cycM = hv ? (hv - pl) / MS_DAY / 30.44 : null, left = hv ? Math.round((hv - now) / MS_DAY) : null;
+      let stage;
+      if (ageM < 0) stage = 'ยังไม่ถึงวันปลูก';
+      else if (left !== null && left < 0) stage = 'เลยกำหนดเก็บเกี่ยวแล้ว';
+      else stage = ageM < 3 ? 'ระยะตั้งตัว (0–3 ด.)' : ageM < 6 ? 'ระยะสร้างทรงพุ่ม (3–6 ด.)' : ageM < 8 ? 'ระยะสะสมแป้ง (6–8 ด.)' : 'พร้อมเก็บเกี่ยวได้ (8 ด.+)';
+      chips.push(`<span class="pi-chip">${stage}</span>`);
+      rows.push(['อายุพืช', ageM >= 0 ? `${ageM.toFixed(1)} เดือน (ปลูก ${thd(pl)})` : `ปลูก ${thd(pl)}`]);
+      if (hv) rows.push(['กำหนดเก็บเกี่ยว', `${thd(hv)} · อายุเก็บเกี่ยว ${cycM.toFixed(1)} เดือน${left !== null && left >= 0 ? ` · อีก ${left} วัน` : ''}`]);
+      if (cycM !== null && cycM < 8) { recs.push(['warn', `กำหนดเก็บเกี่ยวที่อายุ ${cycM.toFixed(1)} เดือน (< 8 เดือน) ผลผลิตและเชื้อแป้งมักต่ำ — ถ้าไม่มีความเสี่ยงน้ำท่วมควรเลื่อนให้ถึง 10–12 เดือน`]); score += 1; }
+      if (left !== null && left >= 0 && left <= 60) recs.push(['info', `ใกล้เก็บเกี่ยว (${left} วัน) — ตรวจเชื้อแป้ง วางแผนขาย และคัดลำต้นสะอาดเก็บไว้ทำพันธุ์`]);
+      if (DA.ageMonthsAtPeak && p.plant) { const ap = DA.ageMonthsAtPeak(String(p.plant).slice(0, 7)); if (ap !== null && ap >= 0 && ap < C.EARLY_HARVEST_MIN_MONTHS) p._youngAtFlood = ap; }
+    }
+    // 3) สถานการณ์ใบด่างของอำเภอ
+    if (dcode) {
+      const a = DA.agg(2569, { district: dcode });
+      if (U.isNum(a.cmdPct)) {
+        rows.push(['ใบด่างในอำเภอ', `${U.pct(a.cmdPct)} ของพื้นที่ปลูก · ${a.cmdSeverity ? a.cmdSeverity.label : ''}`]);
+        if (a.cmdPct >= 0.15 && vk !== 'resistant' && vk !== 'tolerant') { recs.push(['crit', `อำเภอระบาดใบด่าง${a.cmdPct >= 0.3 ? 'วิกฤต' : 'สูง'} (${U.pct(a.cmdPct)}) และแปลงนี้${vc ? 'ใช้พันธุ์' + vc.label : 'ไม่ทราบกลุ่มพันธุ์'} — สำรวจอาการทุก 2 สัปดาห์ ถอนทำลายต้นเป็นโรค และรอบหน้าเปลี่ยนเป็นพันธุ์ต้านทาน (อิทธิ 1–3)`]); score += 2; }
+        else if (vk === 'resistant') recs.push(['ok', 'พันธุ์ต้านทาน — เหมาะเป็นแปลงขยายท่อนพันธุ์สะอาดให้เพื่อนบ้าน (ตรวจรับรองความสะอาดก่อนแจก)']);
+      }
+    }
+    // 4) น้ำท่วม ดิน และรากเน่าโคนเน่า
+    const fl = DA.D.flood && DA.D.flood.byTambon ? DA.D.flood.byTambon[tcode] : null, nY = fl ? fl.nYears || 0 : 0;
+    rows.push(['น้ำท่วมของตำบล', nY ? `ท่วม ${nY} ปี ใน 2563–2569${nY >= 2 ? ' (ซ้ำซาก)' : ''}` : 'ไม่มีรายงาน 2563–2569']);
+    const sk = isFinite(lat) && isFinite(lng) ? soilAt(L.latLng(lat, lng)) : null, scls = sk ? C.SOIL_CLASSES[sk - 1] : null;
+    rows.push(['ดิน ณ จุดแปลง (LDD)', scls ? `<span class="sw" style="display:inline-block;background:${scls.color};vertical-align:-1px"></span> ${scls.label}` : sk === 0 ? 'นอกพื้นที่ประเมิน' : '–']);
+    if (sk === 3 || sk === 4) { recs.push(['warn', `ดิน${sk === 4 ? 'ไม่เหมาะสม (N)' : 'เหมาะสมน้อย (S3)'} — วิเคราะห์ดินก่อนใส่ปุ๋ย เพิ่มอินทรียวัตถุ${sk === 4 ? ' หรือพิจารณาพืชทางเลือก' : ''}`]); score += sk === 4 ? 2 : 1; }
+    const pm = pl ? pl.getMonth() + 1 : null, rainy = pm ? C.RAINY_PLANT_MONTHS.includes(pm) : false, SOILF = [0.4, 0, 0.3, 0.7, 1];
+    const rr = Math.round(100 * (DA.RRW.flood * Math.min(nY / 7, 1) + DA.RRW.soil * SOILF[sk || 0] + DA.RRW.rain * (rainy ? 1 : 0.2)));
+    const rrL = rr >= DA.RR_BREAKS[2] ? 'สูงมาก' : rr >= DA.RR_BREAKS[1] ? 'สูง' : rr >= DA.RR_BREAKS[0] ? 'ปานกลาง' : 'ต่ำ';
+    rows.push(['เสี่ยงรากเน่าโคนเน่า', `${rr}/100 (${rrL})${rainy ? ' · ปลูกฤดูฝน' : ''}`]);
+    if (rr >= DA.RR_BREAKS[1]) { recs.push(['warn', `เสี่ยงรากเน่าโคนเน่า${rrL} — ยกร่องสูง ระบายน้ำ แช่ท่อนพันธุ์ด้วยไตรโคเดอร์มาก่อนปลูก${nY >= 2 ? ' และหลีกเลี่ยงการปลูกช่วงต้นฤดูฝน' : ''}`]); score += 1; }
+    if (p._youngAtFlood !== undefined && nY >= 2) { recs.push(['crit', `ตำบลน้ำท่วมซ้ำซากและพืชจะอายุเพียง ${p._youngAtFlood} เดือนช่วงน้ำท่วมสูงสุด (ต.ค.) — เสี่ยงต้องเก็บเกี่ยวก่อนกำหนด`]); score += 2; }
+    // 5) ศูนย์ช่วยเหลือใกล้สุด
+    const pest = window.KPP_NETWORKS && isFinite(lat) ? DA.nearest(lat, lng, window.KPP_NETWORKS.pest.rows) : null;
+    if (pest) rows.push(['ศจช. ใกล้สุด', `${U.esc(pest.row.name)} · ${U.fmt(pest.km, 1)} กม.`]);
+    // 6) ผลผลิตและมูลค่าคาดการณ์ (ผลผลิตเฉลี่ยของอำเภอจากสถิติทางการล่าสุด)
+    if (dcode && rai) {
+      const ys = Object.keys(DA.D.official).map(Number), ly = Math.max(...ys), o = DA.agg(ly, { district: dcode }), pr = (C.PRICES || [])[C.PRICES.length - 1];
+      if (U.isNum(o.yield)) rows.push(['ผลผลิตคาดการณ์', `≈ ${U.fmt(rai * o.yield / 1000, 1)} ตัน (${U.fmt(o.yield)} กก./ไร่ เฉลี่ยอำเภอ ปี ${ly})${pr ? ` · มูลค่า ≈ ${U.fmtCompact(rai * o.yield * pr.price)} บาท` : ''}`]);
+    }
+    const lvl = score >= 4 ? ['crit', 'ต้องติดตามเร่งด่วน'] : score >= 2 ? ['warn', 'ควรเฝ้าระวัง'] : ['ok', 'สถานะปกติ'];
+    chips.unshift(`<span class="pi-lvl ${lvl[0]}">${lvl[1]}</span>`);
+    if (!recs.length) recs.push(['ok', 'ไม่พบปัจจัยเสี่ยงเด่นจากข้อมูลที่มี — ติดตามตามรอบปกติ']);
+    const place = [p.moo ? 'ม.' + p.moo : '', t.name ? 'ต.' + t.name : p.tambonName ? 'ต.' + p.tambonName : '', d.name ? 'อ.' + d.name : ''].filter(Boolean).join(' ');
+    const geo = isFinite(lat) && lat ? `<div class="pi-act"><a href="https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}" target="_blank" rel="noopener">🧭 นำทาง</a><button type="button" data-copyll="${lat.toFixed(6)}, ${lng.toFixed(6)}">📋 คัดลอกพิกัด</button></div>` : '';
+    return `<div class="pi-chips">${chips.join('')}</div>
+      ${place || rai ? `<div class="pi-sub">${U.esc(place)}${rai ? ` · ${U.fmt(rai, 1)} ไร่` : ''}${p.variety ? ` · ${U.esc(p.variety)}` : ''}</div>` : ''}
+      <div class="pi-recs">${recs.map(([k, s]) => `<div class="pi-rec ${k}">${s}</div>`).join('')}</div>
+      <details class="pi-more"><summary>ข้อมูลประกอบการวิเคราะห์</summary><table>${rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('')}</table></details>${geo}`;
+  }
+
   function parcelPopup(i) {
     const P = DA.D.P, t = DA.D.tambons[P.tcode[i]] || {};
     const b = P.breeds[P.breed[i]];
@@ -864,7 +933,9 @@ KPP.Map = (function () {
       h.push(`<h4>${DA.D.P.aggregated ? 'ช่องกริด 1 กม. (ซูม ≥ 12)' : 'แปลง (ซูม ≥ 12)'}</h4>${items.map(([c, l]) => `<div class="lg-row"><span class="sw" style="background:${c}"></span>${l}</div>`).join('')}`);
     }
     custom.filter((c) => c.on).forEach((c) => h.push(`<h4>${U.esc(c.name)}</h4><div class="lg-row"><span class="sw" style="background:${c.color}"></span>${c.count} รายการ (นำเข้า)</div>`));
-    el.innerHTML = `<div class="lg-title" data-lgt>🗺️ คำอธิบายสัญลักษณ์ <span class="lg-caret">▾</span></div><div class="lg-body">${h.join('')}</div>`;
+    const qh = PRESET && curQ ? `<div class="lg-q"><span>❓ ${U.esc(curQ)}</span><button type="button" data-lgreset title="กลับเป็นชุดชั้นข้อมูลมาตรฐานของโมดูลนี้">คืนค่าชั้นข้อมูล</button></div>` : '';
+    el.innerHTML = `<div class="lg-title" data-lgt>🗺️ คำอธิบายสัญลักษณ์ <span class="lg-caret">▾</span></div><div class="lg-body">${qh}${h.join('')}</div>`;
+    const rb = el.querySelector('[data-lgreset]'); if (rb) rb.onclick = (e) => { e.stopPropagation(); KPP.App.setModule(module); };
   }
 
   /* ---------- Static vector rendering (report & atlas export) ---------- */
@@ -1032,6 +1103,6 @@ KPP.Map = (function () {
     init, render, setBase, setModule, fitScope, renderStatic, openAtlas, renderAtlasCanvas, classify, computeUnits,
     layers: L_, custom, addCustomLayer, removeCustom, setCustom, METRICS, MODULE_METRICS, NET, RAMP,
     get map() { return map; }, get baseKey() { return baseKey; }, get module() { return module; },
-    refresh() { if (S) render(S); }, buildLegend, drawParcels
+    refresh() { if (S) render(S); }, buildLegend, drawParcels, plotInsight
   };
 })();

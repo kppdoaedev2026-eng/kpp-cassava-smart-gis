@@ -214,11 +214,11 @@ KPP.Admin = (function () {
       if (!lat || !lng || !isFinite(lat) || !isFinite(lng)) return;
       n++;
       L.circleMarker([lat, lng], { renderer: S.renderer, pane: 'admin', radius: 6, color: '#7c2d12', weight: 2, fillColor: '#f59e0b', fillOpacity: 0.95 })
-        .bindPopup(() => `<div class="pp"><h4>🌱 แปลงเรียนรู้ ${U.esc(p.id)}</h4>${pp([['โครงการ', p.project], ['กิจกรรม', p.activity], ['ปีงบประมาณ', p.year], ['อำเภอ/ตำบล', [p.district_name, p.tambon_name].filter(Boolean).join(' / ')],
-          ['พันธุ์', p.variety + (p.variety_type ? ' (' + p.variety_type + ')' : '')], ['พื้นที่', p.rai ? p.rai + ' ไร่' : ''], ['ท่อนพันธุ์ที่ได้รับ', p.stems ? U.fmt(+p.stems) + ' ลำ' : ''],
-          ['วันปลูก', p.plant_date], ['คาดว่าเก็บเกี่ยว', p.harvest_date], ['สถานะ', p.status], ['ระบบให้น้ำ', p.irrigation],
-          ['เจ้าของแปลง', p.owner_name], ['บ้านเลขที่/หมู่', p.village], ['เบอร์โทร', p.phone], ['ที่อยู่', p.address], ['พิกัด', lat.toFixed(5) + ', ' + lng.toFixed(5)]])}
-          <div class="pp-src"><span class="badge src-real">CassavaPlot Monitor</span></div></div>`, { maxWidth: 360 })
+        .bindPopup(() => `<div class="pp pi"><h4>🌱 แปลงเรียนรู้ ${U.esc(p.id)}${p.owner_name ? ' · ' + U.esc(p.owner_name) : ''}</h4>
+          <div class="pi-sub">${U.esc([p.project, p.activity].filter(Boolean).join(' · '))}</div>
+          ${KPP.Map.plotInsight({ lat, lng, rai: p.rai, variety: p.variety, plant: p.plant_date, harvest: p.harvest_date, dcode: p.district, tambonName: String(p.tambon_name || '').replace(/^ต(ำบล|\.)\s*/, '').trim() })}
+          <details class="pi-more"><summary>ข้อมูลจากระบบ CassavaPlot</summary>${pp([['ปีงบประมาณ', p.year], ['ประเภทพันธุ์', p.variety_type], ['ท่อนพันธุ์ที่ได้รับ', p.stems ? U.fmt(+p.stems) + ' ลำ' : ''], ['สถานะ', p.status], ['ระบบให้น้ำ', p.irrigation], ['บ้านเลขที่/หมู่', p.village], ['เบอร์โทร', p.phone], ['ที่อยู่', p.address]])}</details>
+          <div class="pp-src"><span class="badge src-real">CassavaPlot Monitor</span><span class="badge src-est">วิเคราะห์อัตโนมัติ</span></div></div>`, { maxWidth: 380, minWidth: 300 })
         .addTo(g);
     });
     S.lpLayer = g.addTo(KPP.Map.map);
@@ -249,9 +249,10 @@ KPP.Admin = (function () {
     rows.forEach((p) => {
       if (!U.isNum(+p.lat) || !U.isNum(+p.lng) || !+p.lat) return;
       const m = L.circleMarker([+p.lat, +p.lng], { renderer: S.renderer, pane: 'admin', radius: rows.length > 6000 ? 3 : 4, color: '#065F46', weight: 1, fillColor: '#10b981', fillOpacity: 0.8 });
-      m.bindPopup(() => `<div class="pp"><h4>แปลง ${U.esc(p.key || '')}</h4>${pp([['พันธุ์', p.variety], ['พื้นที่', p.rai ? U.fmt(+p.rai) + ' ไร่' : ''], ['วันปลูก', p.plant_date], ['วันเก็บเกี่ยว', p.harvest_date], ['หมู่', p.moo], ['ชื่อ', p.owner_name], ['เบอร์โทร', p.phone]])}
+      m.bindPopup(() => `<div class="pp pi"><h4>🌿 แปลง ${U.esc(p.key || '')}${p.owner_name ? ' · ' + U.esc(p.owner_name) : ''}</h4>
+        ${KPP.Map.plotInsight({ lat: p.lat, lng: p.lng, rai: p.rai, variety: p.variety, plant: p.plant_date, harvest: p.harvest_date, tcode: String(p.tambon || ''), dcode: String(p.district || cur.district || ''), moo: p.moo })}
         <div class="pp-detail" data-key="${U.esc(p.key)}"><button class="btn sm primary" data-detail="${U.esc(p.key)}">🔓 ดูข้อมูลทั้งหมด${isAdmin() ? ' (รวมข้อมูลส่วนบุคคล)' : ''}</button></div>
-        <div class="pp-src"><span class="badge src-real">ผังแปลงเกษตรกรรมดิจิทัล ${U.esc(String(cur.year))}</span></div></div>`, { maxWidth: 360 });
+        <div class="pp-src"><span class="badge src-real">ผังแปลงเกษตรกรรมดิจิทัล ${U.esc(String(cur.year))}</span><span class="badge src-est">วิเคราะห์อัตโนมัติ</span></div></div>`, { maxWidth: 380, minWidth: 300 });
       g.addLayer(m);
     });
     S.layer = g.addTo(KPP.Map.map);

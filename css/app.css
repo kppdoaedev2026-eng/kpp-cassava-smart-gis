@@ -545,3 +545,17 @@ table.risk tr.warn-row td { background: rgba(250,178,25,.10); }
 .map-q b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .map-q-tag { background: #065F46; color: #fff; border-radius: 999px; padding: 1px 8px; font-size: .72rem; }
 .map-q button, .map-q a { font: inherit; font-size: .75rem; border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a; border-radius: 999px; padding: 2px 8px; cursor: pointer; text-decoration: none; white-space: nowrap; }
+.lg-q { display: flex; flex-direction: column; gap: 4px; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 6px; padding: 5px 7px; margin: 0 0 6px; font-size: .76rem; font-weight: 600; color: #065F46; }
+.lg-q button { align-self: flex-start; font: inherit; font-size: .7rem; font-weight: 500; border: 1px solid #a7f3d0; background: #fff; color: #065F46; border-radius: 999px; padding: 1px 8px; cursor: pointer; }
+.pi h4 { margin-bottom: 4px; }
+.pi-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 2px 0 4px; }
+.pi-chip { font-size: .7rem; padding: 1px 7px; border-radius: 999px; background: #e2e8f0; color: #0f172a; }
+.pi-lvl { font-size: .7rem; padding: 1px 8px; border-radius: 999px; color: #fff; font-weight: 600; }
+.pi-lvl.crit { background: #b2182b; } .pi-lvl.warn { background: #d97706; } .pi-lvl.ok { background: #15803d; }
+.pi-sub { font-size: .74rem; color: #475569; margin: 0 0 5px; }
+.pi-recs { display: grid; gap: 4px; margin: 4px 0; }
+.pi-rec { font-size: .76rem; line-height: 1.35; padding: 4px 7px; border-radius: 0; border-left: 3px solid; background: #f8fafc; color: #0f172a; }
+.pi-rec.crit { border-color: #b2182b; background: #fef2f2; } .pi-rec.warn { border-color: #d97706; background: #fffbeb; } .pi-rec.ok { border-color: #15803d; background: #f0fdf4; } .pi-rec.info { border-color: #2a78d6; background: #eff6ff; }
+.pi-more { margin: 4px 0; font-size: .75rem; } .pi-more summary { cursor: pointer; color: #065F46; font-weight: 600; }
+.pi-more table td { padding: 1px 6px 1px 0; vertical-align: top; } .pi-more table td:first-child { color: #64748b; white-space: nowrap; }
+.pi-act { display: flex; gap: 6px; margin: 5px 0; } .pi-act a, .pi-act button { font: inherit; font-size: .72rem; border: 1px solid #cbd5e1; background: #fff; color: #0f172a; border-radius: 999px; padding: 2px 9px; cursor: pointer; text-decoration: none; }
