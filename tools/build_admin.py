@@ -27,5 +27,6 @@ s = put('<!-- About -->', '''<!-- Admin / Staff -->
 s = put('<script src="js/app.js', '<script src="js/admin.js?v=%s"></script>\n' % ver, s)
 s = s.replace('v<span id="appVer"></span></span>', 'v<span id="appVer"></span> · <a href="./">หน้าสาธารณะ</a></span>', 1)
 s = s.replace('<title>ระบบส่งเสริมและจัดการมันสำปะหลังจังหวัดกำแพงเพชร</title>', '<title>เจ้าหน้าที่ · ระบบส่งเสริมและจัดการมันสำปะหลังจังหวัดกำแพงเพชร</title>\n<meta name="robots" content="noindex,nofollow">', 1)
+s = s.replace('<html lang="th" data-theme="light">', '<html lang="th" data-theme="light" class="staff-site">', 1)
 io.open(os.path.join(ROOT, 'admin.html'), 'w', encoding='utf-8', newline='').write(s)
 print('admin.html v' + ver)

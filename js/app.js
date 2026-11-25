@@ -373,7 +373,7 @@ KPP.App = (function () {
         { id: 'plan', label: 'แผนปฏิบัติการ', html: planHtml },
         { id: 'risk', label: 'ตารางความเสี่ยง', html: riskTableHtml },
         { id: 'insight', label: 'ข้อเสนอแนะ', html: insightsHtml },
-        { id: 'status', label: 'สถานะข้อมูล', html: statusHtml }
+        { id: 'status', label: '🔐 สถานะข้อมูล', html: statusHtml, staff: true }
       ]
     },
     prod: {
@@ -396,7 +396,7 @@ KPP.App = (function () {
         { id: 'tbl', label: 'ตารางการจัดการ', html: cmdTableHtml },
         { id: 'proj', label: 'แปลงส่งเสริมพันธุ์', html: projTableHtml },
         { id: 'trend', label: 'แนวโน้มพันธุ์หลายปี', html: trendHtml },
-        { id: 'audit', label: 'ตรวจสอบพันธุ์', html: varietyAuditHtml },
+        { id: 'audit', label: '🔐 ตรวจสอบพันธุ์', staff: true, html: varietyAuditHtml },
         { id: 'rec', label: 'แนวทางจัดการ', html: cmdRecHtml }
       ]
     },
@@ -421,9 +421,11 @@ KPP.App = (function () {
     }
   };
 
+  /* แท็บสำหรับเจ้าหน้าที่ (ข้อมูลคุณภาพ/การดูแลระบบ) แสดงเฉพาะหน้า admin.html */
+  const STAFF_SITE = document.documentElement.classList.contains('staff-site');
   function renderSide() {
-    const mod = MODULES[state.module];
-    const cur = state.tab[state.module] || mod.tabs[0].id;
+    const mod0 = MODULES[state.module], mod = Object.assign({}, mod0, { tabs: mod0.tabs.filter((t) => !t.staff || STAFF_SITE) });
+    const cur = mod.tabs.some((t) => t.id === state.tab[state.module]) ? state.tab[state.module] : mod.tabs[0].id;
     $('sideTabs').innerHTML = mod.tabs.map((t) => `<button role="tab" class="tab ${t.id === cur ? 'active' : ''}" data-tab="${t.id}">${t.label}</button>`).join('');
     CH.destroyAll();
     const t = mod.tabs.find((x) => x.id === cur) || mod.tabs[0];
@@ -1078,7 +1080,7 @@ KPP.App = (function () {
       <div class="table-wrap"><table class="risk"><thead><tr><th>ชุดข้อมูล</th><th>แหล่ง/หน่วยงาน</th><th>ระดับข้อมูล</th><th>ช่วงเวลา</th><th>ไฟล์ในระบบ</th></tr></thead><tbody>${
         rows.map(([n, k, lv, per, file]) => `<tr><td class="l" style="white-space:normal"><b>${U.esc(n)}</b></td><td class="l" style="white-space:normal">${srcBadge(k)} <small>${U.esc((C.SOURCES[k] || {}).note || '')}</small></td><td class="l">${U.esc(lv)}</td><td class="l" style="white-space:normal">${U.esc(per)}</td><td class="l"><code>${U.esc(file)}</code></td></tr>`).join('')
       }</tbody></table></div>
-      <p class="hint">ดึงข้อมูลไปใช้ต่อได้ที่ API สาธารณะ <code>api/v1/</code> (ข้อมูลระดับอำเภอ/ตำบล ไม่มีข้อมูลส่วนบุคคล) · สถานะความใหม่ของข้อมูลดูแท็บ "สถานะข้อมูล"</p>`;
+      <p class="hint">ดึงข้อมูลไปใช้ต่อได้ที่ API สาธารณะ <code>api/v1/</code> (ข้อมูลระดับอำเภอ/ตำบล ไม่มีข้อมูลส่วนบุคคล) · สถานะความใหม่ของข้อมูลและการตรวจสอบพันธุ์อยู่ในหน้าเจ้าหน้าที่</p>`;
   }
 
   function openAbout() {
@@ -1190,7 +1192,7 @@ KPP.App = (function () {
     setTimeout(() => { measureHeader(); M.map.invalidateSize(); Object.values(CH.charts).forEach((c) => c.resize()); M.fitScope(); }, 250);
   }
 
-  return { init, state, update, summaryHtml, cmdGoal, selectDistrict, selectTambon, setYear, setDisease, setModule, renderLayerPanel, showTab, activeTab, openAtlas };
+  return { init, state, update, summaryHtml, cmdGoal, loadPlotMonitor, selectDistrict, selectTambon, setYear, setDisease, setModule, renderLayerPanel, showTab, activeTab, openAtlas };
 })();
 
 document.addEventListener('DOMContentLoaded', () => {

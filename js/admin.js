@@ -2,7 +2,7 @@
 KPP.Admin = (function () {
   const U = KPP.U, C = KPP.CONFIG;
   const $ = (id) => document.getElementById(id);
-  const S = { token: null, role: null, name: '', settings: null, rows: null, layer: null, mode: 'grid' };
+  const S = { token: null, role: null, name: '', settings: null, rows: null, layer: null, mode: 'grid', lpOn: true, tab: 'map' };
   const KEY = 'kpp.admin.session';
 
   async function call(body) {
@@ -15,9 +15,9 @@ KPP.Admin = (function () {
   const isAdmin = () => S.role === 'admin';
   const loggedIn = () => !!S.token;
 
-  function saveSession() { try { sessionStorage.setItem(KEY, JSON.stringify({ t: S.token, r: S.role, n: S.name, m: S.mode })); } catch (e) { /* ไม่เก็บ */ } }
+  function saveSession() { try { sessionStorage.setItem(KEY, JSON.stringify({ t: S.token, r: S.role, n: S.name, m: S.mode, lp: S.lpOn })); } catch (e) { /* ไม่เก็บ */ } }
   function restore() {
-    try { const o = JSON.parse(sessionStorage.getItem(KEY) || 'null'); if (o && o.t) { S.token = o.t; S.role = o.r; S.name = o.n; S.mode = o.m === 'parcel' ? 'parcel' : 'grid'; } } catch (e) { /* ไม่มี */ }
+    try { const o = JSON.parse(sessionStorage.getItem(KEY) || 'null'); if (o && o.t) { S.token = o.t; S.role = o.r; S.name = o.n; S.mode = o.m === 'parcel' ? 'parcel' : 'grid'; S.lpOn = o.lp !== false; } } catch (e) { /* ไม่มี */ }
   }
 
   function renderButton() {
@@ -86,30 +86,68 @@ KPP.Admin = (function () {
       return;
     }
     const s = S.settings || {}, adm = isAdmin();
+    const TABS = [['map', '🗺️ แผนที่'], adm && ['users', '👥 ผู้ใช้'], adm && ['set', '⚙️ การตั้งค่า'], ['data', '🔌 ข้อมูล & API'], adm && ['log', '📜 บันทึก'], ['me', '🔑 บัญชีของฉัน']].filter(Boolean);
+    if (!TABS.some(([k]) => k === S.tab)) S.tab = 'map';
+    const pane = (k, html) => `<section class="adm-pane" data-pane="${k}" ${S.tab === k ? '' : 'hidden'}>${html}</section>`;
+    const base = new URL('./', location.href).href, api = base + 'api/v1/';
+    const copyRow = (label, val, hint) => `<div class="adm-copy"><span>${label}</span><div><input readonly value="${U.esc(val)}" aria-label="${U.esc(label)}"><button class="btn sm" data-copy>คัดลอก</button></div>${hint ? `<small>${hint}</small>` : ''}</div>`;
+    const EP = [['index.json', 'รายการ API ทั้งหมด'], ['districts.json', 'สรุปรายอำเภอ'], ['production.json', 'สถิติการผลิต'], ['registry.json', 'ทะเบียนเกษตรกร'], ['cmd.json', 'โรคใบด่าง'],
+      ['resist_plots.json', 'แปลงส่งเสริม'], ['support.json', 'สนับสนุนท่อนพันธุ์'], ['trends.json', 'แนวโน้มพันธุ์หลายปี'], ['prices.json', 'ราคา'], ['plot_monitor.json', 'CassavaPlot (สรุป)']];
     el.innerHTML = `<div class="adm-head"><b>${U.esc(S.name || '')}</b> <span class="vclass-chip" style="background:${adm ? '#b2182b' : '#0f766e'}">${adm ? 'แอดมิน' : 'เจ้าหน้าที่'}</span> <button class="btn sm" id="admLogout">ออกจากระบบ</button></div>
-      <h4>🗺️ รูปแบบการแสดงแผนที่</h4>
-      <div class="seg" id="admMode"><button data-mode="grid" class="${S.mode === 'grid' ? 'on' : ''}">กริด 1 กม. (สาธารณะ)</button><button data-mode="parcel" class="${S.mode === 'parcel' ? 'on' : ''}" ${s.staff_can_view_parcels === 'TRUE' || adm ? '' : 'disabled'}>พิกัดแปลง/ผังแปลง</button></div>
-      <p class="hint" id="admModeInfo">${S.mode === 'parcel' ? (S.info || 'กำลังโหลดพิกัดแปลง…') : 'แสดงเฉพาะกริด 1 กม. ที่ไม่ระบุตัวบุคคล'}</p>
-      ${adm ? `<h4>🔒 การควบคุมโดยแอดมิน</h4>
-        ${toggleRow('show_parcel_names', 'แสดงชื่อแปลง/ชื่อเจ้าของแปลง', 'เปิดเฉพาะเมื่อจำเป็น ทุกการดูถูกบันทึกใน audit')}
-        ${toggleRow('show_personal', 'แสดงข้อมูลส่วนบุคคล (เบอร์โทร)', 'เฉพาะแอดมินเห็น')}
-        ${toggleRow('staff_can_view_parcels', 'ให้เจ้าหน้าที่ดูพิกัดแปลงได้', 'ปิด = เฉพาะแอดมิน')}
-        ${toggleRow('staff_can_view_names', 'ให้เจ้าหน้าที่เห็นชื่อ (เมื่อเปิดแสดงชื่อ)', 'ค่าเริ่มต้น: ปิด')}
-        <div class="row-gap" style="margin-top:8px"><button class="btn sm" id="admAudit">📜 ดูบันทึกการเข้าถึง</button></div><div id="admAuditOut"></div>` : '<p class="hint">เจ้าหน้าที่เห็นเฉพาะอำเภอที่ได้รับมอบหมาย (กำหนดในชีต KPP_PRIVATE แท็บ staff คอลัมน์ districts) · ข้อมูลส่วนบุคคลตามที่แอดมินเปิด</p>'}
-      ${adm ? `<h4>👥 ผู้ใช้งานระบบ</h4><div id="admUsers" class="hint">กำลังโหลดรายชื่อ…</div>
+      <nav class="adm-tabs" role="tablist">${TABS.map(([k, l]) => `<button role="tab" data-tab="${k}" class="${S.tab === k ? 'on' : ''}">${l}</button>`).join('')}</nav>
+      ${pane('map', `<h4>รูปแบบการแสดงแผนที่</h4>
+        <div class="seg" id="admMode"><button data-mode="grid" class="${S.mode === 'grid' ? 'on' : ''}">กริด 1 กม. (สาธารณะ)</button><button data-mode="parcel" class="${S.mode === 'parcel' ? 'on' : ''}" ${s.staff_can_view_parcels === 'TRUE' || adm ? '' : 'disabled'}>พิกัดแปลง/ผังแปลง</button></div>
+        <label class="adm-row"><input type="checkbox" id="admLp" ${S.lpOn ? 'checked' : ''}><span><b>แสดงแปลงเรียนรู้/แปลงส่งเสริม (CassavaPlot)</b><small>จุดสีส้ม · แสดงทั้งจังหวัดได้โดยไม่ต้องเลือกอำเภอ</small></span></label>
+        <p class="hint" id="admModeInfo">${S.mode === 'parcel' ? (S.info || 'กำลังโหลดพิกัดแปลง…') : 'แสดงเฉพาะกริด 1 กม. ที่ไม่ระบุตัวบุคคล'}</p>
+        <ul class="hint"><li>ผังแปลง (จุดเขียว): แอดมินต้องเลือกอำเภอที่ตัวกรองด้านบนก่อน · เลือกตำบลเพื่อกรองต่อ</li><li>คลิกจุด → ปุ่ม "ดูข้อมูลทั้งหมด" เพื่อดูข้อมูลส่วนบุคคล (บันทึกการเข้าถึงทุกครั้ง)</li></ul>
+        ${adm ? '' : '<p class="hint">เจ้าหน้าที่เห็นเฉพาะอำเภอที่ได้รับมอบหมาย · ข้อมูลส่วนบุคคลตามที่แอดมินเปิด</p>'}`)}
+      ${adm ? pane('users', `<h4>ผู้ใช้งานระบบ</h4><div id="admUsers" class="hint">กำลังโหลดรายชื่อ…</div>
         <details class="adm-add"><summary>➕ เพิ่มผู้ใช้งาน</summary>
           <form id="admAddForm" class="adm-form">
-            <input id="auCode" placeholder="รหัสผู้ใช้ (อังกฤษ/ตัวเลข 3–30 ตัว)" autocomplete="off" required pattern="[A-Za-z0-9_.\-]{3,30}">
+            <input id="auCode" placeholder="รหัสผู้ใช้ (อังกฤษ/ตัวเลข 3–30 ตัว)" autocomplete="off" required pattern="[A-Za-z0-9_.\\-]{3,30}">
             <input id="auName" placeholder="ชื่อ-สกุล / หน่วยงาน" autocomplete="off" required>
             <input id="auPin" type="password" placeholder="รหัสผ่านชั่วคราว (อย่างน้อย 8 ตัว)" autocomplete="new-password" minlength="8" required>
             <select id="auRole"><option value="staff">เจ้าหน้าที่ (เห็นเฉพาะอำเภอที่รับผิดชอบ)</option><option value="admin">แอดมิน (เห็นทุกอำเภอ + จัดการระบบ)</option></select>
             <div class="hint">อำเภอที่รับผิดชอบ (เจ้าหน้าที่):</div><div class="adm-dist" id="auDist">${distBoxes([])}</div>
-            <div id="auMsg" class="hint" role="alert"></div><button class="btn primary sm" type="submit">เพิ่มผู้ใช้</button></form></details>` : ''}
-      <h4>🔑 เปลี่ยนรหัสผ่านของฉัน</h4>
-      <form id="admPinForm" class="adm-form"><input id="admOldPin" type="password" placeholder="รหัสเดิม" autocomplete="current-password" required>
-        <input id="admNewPin" type="password" placeholder="รหัสใหม่ (อย่างน้อย 8 ตัว)" autocomplete="new-password" minlength="8" required>
-        <div id="admPinMsg" class="hint" role="alert"></div><button class="btn sm" type="submit">บันทึกรหัสใหม่</button></form>`;
-    $('admLogout').onclick = async () => { await call({ action: 'logout', token: S.token }); Object.assign(S, { token: null, role: null, name: '', rows: null, mode: 'grid', cache: {} }); try { sessionStorage.removeItem(KEY); } catch (e) { /* ไม่เก็บ */ } clearLayer(); renderButton(); render(); };
+            <div id="auMsg" class="hint" role="alert"></div><button class="btn primary sm" type="submit">เพิ่มผู้ใช้</button></form></details>`) : ''}
+      ${adm ? pane('set', `<h4>การควบคุมข้อมูลส่วนบุคคล</h4>
+        ${toggleRow('show_parcel_names', 'แสดงชื่อแปลง/ชื่อเจ้าของแปลง', 'เปิดเฉพาะเมื่อจำเป็น ทุกการดูถูกบันทึกใน audit')}
+        ${toggleRow('show_personal', 'แสดงข้อมูลส่วนบุคคล (เบอร์โทร)', 'เฉพาะแอดมินเห็น')}
+        <h4>สิทธิ์เจ้าหน้าที่</h4>
+        ${toggleRow('staff_can_view_parcels', 'ให้เจ้าหน้าที่ดูพิกัดแปลงได้', 'ปิด = เฉพาะแอดมิน')}
+        ${toggleRow('staff_can_view_names', 'ให้เจ้าหน้าที่เห็นชื่อ (เมื่อเปิดแสดงชื่อ)', 'ค่าเริ่มต้น: ปิด')}
+        <p class="hint">การตั้งค่าบันทึกในชีต KPP_PRIVATE แท็บ settings และมีผลกับผู้ใช้ทุกคนทันที</p>`) : ''}
+      ${pane('data', `<h4>เครื่องมือข้อมูล</h4>
+        <div class="row-gap"><button class="btn sm" id="admImport">📥 นำเข้าข้อมูล (ชั่วคราวในเบราว์เซอร์)</button> <a class="btn sm" href="tests.html" target="_blank" rel="noopener">🧪 ทดสอบระบบ</a> <button class="btn sm" id="admPlotMon">🔄 ดึง CassavaPlot ใหม่</button></div>
+        <h4>API สาธารณะ (ไม่มีข้อมูลส่วนบุคคล · ใช้ GET)</h4>
+        ${copyRow('Base URL', api, 'ไฟล์ JSON คงที่ อัปเดตเมื่อ deploy · รายละเอียดใน api/README.md')}
+        <details class="adm-add"><summary>Endpoint ทั้งหมด (${EP.length})</summary>${EP.map(([f, l]) => copyRow(l, api + f)).join('')}</details>
+        <h4>บริการที่ระบบเชื่อมต่อ</h4>
+        ${copyRow('Backend ส่วนตัว (POST, ต้องมี token)', C.BACKEND_URL || '', 'ส่ง JSON แบบ text/plain เช่น {"action":"ping"}')}
+        ${copyRow('CassavaPlot Monitor (POST)', C.PLOT_MONITOR_URL || '', 'body: {"fn":"api_publicDashboard","args":{"year":""}}')}
+        ${copyRow('App Hub', C.APP_HUB_URL || '')}
+        <h4>ลิงก์ระบบ</h4>
+        ${copyRow('หน้าสาธารณะ', base)}${copyRow('หน้าเจ้าหน้าที่', base + 'admin.html')}`)}
+      ${adm ? pane('log', `<h4>บันทึกการเข้าถึงข้อมูล (audit)</h4><div class="row-gap"><button class="btn sm" id="admAudit">📜 โหลดบันทึกล่าสุด</button></div><div id="admAuditOut"></div>`) : ''}
+      ${pane('me', `<h4>เปลี่ยนรหัสผ่านของฉัน</h4>
+        <form id="admPinForm" class="adm-form"><input id="admOldPin" type="password" placeholder="รหัสเดิม" autocomplete="current-password" required>
+          <input id="admNewPin" type="password" placeholder="รหัสใหม่ (อย่างน้อย 8 ตัว)" autocomplete="new-password" minlength="8" required>
+          <div id="admPinMsg" class="hint" role="alert"></div><button class="btn sm" type="submit">บันทึกรหัสใหม่</button></form>`)}`;
+    el.querySelector('.adm-tabs').onclick = (e) => {
+      const b = e.target.closest('[data-tab]'); if (!b) return;
+      S.tab = b.dataset.tab;
+      el.querySelectorAll('.adm-tabs [data-tab]').forEach((x) => x.classList.toggle('on', x === b));
+      el.querySelectorAll('.adm-pane').forEach((p) => { p.hidden = p.dataset.pane !== S.tab; });
+    };
+    el.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', async () => {
+      const i = b.previousElementSibling;
+      try { await navigator.clipboard.writeText(i.value); } catch (er) { i.select(); document.execCommand('copy'); }
+      b.textContent = 'คัดลอกแล้ว ✓'; setTimeout(() => { b.textContent = 'คัดลอก'; }, 1500);
+    }));
+    $('admLp').onchange = (e) => { S.lpOn = e.target.checked; saveSession(); applyMode(); };
+    $('admImport').onclick = () => { close(); KPP.Importer.open(); };
+    $('admPlotMon').onclick = () => { if (KPP.App.loadPlotMonitor) KPP.App.loadPlotMonitor(true); };
+    $('admLogout').onclick = async () => { await call({ action: 'logout', token: S.token }); Object.assign(S, { token: null, role: null, name: '', rows: null, mode: 'grid', cache: {}, lpRows: null }); try { sessionStorage.removeItem(KEY); } catch (e) { /* ไม่เก็บ */ } clearLayer(); renderButton(); render(); };
     if (adm) {
       loadUsers();
       $('admAddForm').addEventListener('submit', async (e) => {
@@ -128,7 +166,7 @@ KPP.Admin = (function () {
     $('admMode').addEventListener('click', (e) => { const b = e.target.closest('button[data-mode]'); if (!b || b.disabled) return; S.mode = b.dataset.mode; saveSession(); applyMode(); render(); if (S.mode === 'parcel' && !KPP.App.state.district && isAdmin()) close(); });
     el.querySelectorAll('[data-set]').forEach((i) => i.addEventListener('change', async () => {
       const r = await call({ action: 'set_settings', settings: { [i.dataset.set]: i.checked ? 'TRUE' : 'FALSE' } });
-      if (r.ok) { S.settings = r.settings; S.cache = {}; if (S.mode === 'parcel') applyMode(); U.toast('บันทึกการตั้งค่าแล้ว', 'ok'); } else { U.toast(r.error || 'บันทึกไม่สำเร็จ', 'err'); i.checked = !i.checked; }
+      if (r.ok) { S.settings = r.settings; S.cache = {}; S.lpRows = null; if (S.mode === 'parcel') applyMode(); U.toast('บันทึกการตั้งค่าแล้ว', 'ok'); } else { U.toast(r.error || 'บันทึกไม่สำเร็จ', 'err'); i.checked = !i.checked; }
     }));
     const au = $('admAudit'); if (au) au.onclick = async () => {
       const r = await call({ action: 'audit' });
@@ -145,40 +183,80 @@ KPP.Admin = (function () {
     if (!S.note) { S.note = L.control({ position: 'topleft' }); S.note.onAdd = () => { const d = L.DomUtil.create('div', 'adm-mapnote'); L.DomEvent.disableClickPropagation(d); return d; }; }
     if (!t) { if (S.note._map) S.note.remove(); return; }
     if (!S.note._map) S.note.addTo(M);
-    S.note.getContainer().textContent = '🔐 ' + t;
+    S.note.getContainer().innerHTML = `<div>🔐 ${U.esc(t)}</div><div class="adm-mapkey"><i style="background:#10b981"></i>ผังแปลง <i style="background:#f59e0b;border-color:#7c2d12"></i>แปลงเรียนรู้ CassavaPlot</div>`;
   }
-  function clearLayer() { if (S.layer) { KPP.Map.map.removeLayer(S.layer); S.layer = null; } mapNote(''); KPP.Map.layers.parcels.on = true; KPP.Map.refresh(); }
+  function clearLayer() { if (S.layer) { KPP.Map.map.removeLayer(S.layer); S.layer = null; } if (S.lpLayer) { KPP.Map.map.removeLayer(S.lpLayer); S.lpLayer = null; } mapNote(''); KPP.Map.layers.parcels.on = true; KPP.Map.refresh(); }
   function setInfo(t) { S.info = t; const el = $('admModeInfo'); if (el) el.textContent = t; mapNote(t); }
+  function ensurePane() {
+    const M = KPP.Map.map;
+    if (!M.getPane('admin')) M.createPane('admin').style.zIndex = 460;   // อยู่เหนือจุดกริดสาธารณะ ใต้หมุดศูนย์/ป้ายชื่อ
+    if (!S.renderer) S.renderer = L.canvas({ padding: 0.3, pane: 'admin' });
+  }
+  const pp = (rows) => `<table>${rows.filter(([, v]) => v !== '' && v !== null && v !== undefined).map(([k, v]) => `<tr><td>${k}</td><td>${U.esc(v)}</td></tr>`).join('')}</table>`;
+
+  /* แปลงเรียนรู้/แปลงส่งเสริมจากระบบ CassavaPlot (จุดสีส้ม) — ~ร้อยกว่าแปลง แสดงทั้งจังหวัดได้ กรองตามอำเภอ/ตำบลที่เลือก */
+  async function drawLearning() {
+    if (S.lpLayer) { KPP.Map.map.removeLayer(S.lpLayer); S.lpLayer = null; }
+    S.lpInfo = '';
+    if (!S.lpOn) return;
+    if (!S.lpRows) {
+      const r = await call({ action: 'learning_plots' });
+      if (!r.ok) { S.lpInfo = 'แปลงเรียนรู้: ' + (r.error || 'โหลดไม่สำเร็จ') + (/ไม่รู้จัก/.test(r.error || '') ? ' (ต้อง Deploy backend เวอร์ชันใหม่)' : ''); return; }
+      S.lpRows = r.rows; S.lpNames = r.names;
+    }
+    const st = KPP.App.state, tname = st.tambon ? (KPP.Data.D.tambons[st.tambon] || {}).name : null;
+    const rows = S.lpRows.filter((p) => (!st.district || p.district === st.district) && (!tname || String(p.tambon_name || '').replace(/^ต(ำบล|\.)\s*/, '').trim() === tname));
+    ensurePane();
+    const g = L.layerGroup();
+    let n = 0;
+    rows.forEach((p) => {
+      const lat = +p.lat, lng = +p.lng;
+      if (!lat || !lng || !isFinite(lat) || !isFinite(lng)) return;
+      n++;
+      L.circleMarker([lat, lng], { renderer: S.renderer, pane: 'admin', radius: 6, color: '#7c2d12', weight: 2, fillColor: '#f59e0b', fillOpacity: 0.95 })
+        .bindPopup(() => `<div class="pp"><h4>🌱 แปลงเรียนรู้ ${U.esc(p.id)}</h4>${pp([['โครงการ', p.project], ['กิจกรรม', p.activity], ['ปีงบประมาณ', p.year], ['อำเภอ/ตำบล', [p.district_name, p.tambon_name].filter(Boolean).join(' / ')],
+          ['พันธุ์', p.variety + (p.variety_type ? ' (' + p.variety_type + ')' : '')], ['พื้นที่', p.rai ? p.rai + ' ไร่' : ''], ['ท่อนพันธุ์ที่ได้รับ', p.stems ? U.fmt(+p.stems) + ' ลำ' : ''],
+          ['วันปลูก', p.plant_date], ['คาดว่าเก็บเกี่ยว', p.harvest_date], ['สถานะ', p.status], ['ระบบให้น้ำ', p.irrigation],
+          ['เจ้าของแปลง', p.owner_name], ['บ้านเลขที่/หมู่', p.village], ['เบอร์โทร', p.phone], ['ที่อยู่', p.address], ['พิกัด', lat.toFixed(5) + ', ' + lng.toFixed(5)]])}
+          <div class="pp-src"><span class="badge src-real">CassavaPlot Monitor</span></div></div>`, { maxWidth: 360 })
+        .addTo(g);
+    });
+    S.lpLayer = g.addTo(KPP.Map.map);
+    S.lpInfo = `แปลงเรียนรู้ ${U.fmt(n)} แปลง${rows.length > n ? ` (ไม่มีพิกัด ${rows.length - n})` : ''}`;
+  }
+
   async function applyMode() {
     if (!loggedIn() || S.mode !== 'parcel') { clearLayer(); return; }
-    const st = KPP.App.state, need = isAdmin() && !st.district;
-    if (need) { if (S.layer) { KPP.Map.map.removeLayer(S.layer); S.layer = null; } setInfo('เลือกอำเภอที่ตัวกรองด้านบนก่อน จึงจะแสดงพิกัดแปลง (โหลดทีละอำเภอ/ตำบลเพื่อความเร็ว)'); KPP.Map.layers.parcels.on = false; KPP.Map.refresh(); return; }
+    await drawLearning();
+    const st = KPP.App.state, need = isAdmin() && !st.district, lp = S.lpInfo ? ' · ' + S.lpInfo : '';
+    if (need) { if (S.layer) { KPP.Map.map.removeLayer(S.layer); S.layer = null; } setInfo('ผังแปลง: เลือกอำเภอที่ตัวกรองด้านบนก่อน' + lp); return; }
     const key = st.year + '|' + (st.district || '*');
     if (!S.cache[key]) {
-      setInfo('กำลังโหลดพิกัดแปลง…');
+      setInfo('กำลังโหลดพิกัดผังแปลง…' + lp);
       const r = await call({ action: 'parcels', year: st.year, district: st.district || '' });
-      if (!r.ok) { U.toast(r.error || 'โหลดพิกัดไม่สำเร็จ', 'err'); S.mode = 'grid'; render(); clearLayer(); return; }
+      if (!r.ok) { U.toast(r.error || 'โหลดพิกัดไม่สำเร็จ', 'err'); setInfo('ผังแปลง: ' + (r.error || 'โหลดไม่สำเร็จ') + lp); return; }
       S.cache[key] = { rows: r.rows, names: r.names };
     }
     const cur = KPP.App.state;
-    if (cur.year + '|' + (cur.district || '*') !== key && !(isAdmin() === false && !cur.district)) { return; }   // ตัวกรองเปลี่ยนระหว่างรอ — รอบใหม่จะโหลดเอง
+    if (cur.year + '|' + (cur.district || '*') !== key) return;   // ตัวกรองเปลี่ยนระหว่างรอ — รอบใหม่จะวาดเอง
     const c = S.cache[key];
     const rows = cur.tambon ? c.rows.filter((p) => String(p.tambon) === String(cur.tambon)) : c.rows;
     S.names = c.names; S.rows = rows;
     if (S.layer) KPP.Map.map.removeLayer(S.layer);
     KPP.Map.layers.parcels.on = false; KPP.Map.refresh();
-    if (!KPP.Map.map.getPane('admin')) KPP.Map.map.createPane('admin').style.zIndex = 460;   // อยู่เหนือจุดกริดสาธารณะ ใต้หมุดศูนย์/ป้ายชื่อ
-    if (!S.renderer) S.renderer = L.canvas({ padding: 0.3, pane: 'admin' });
+    ensurePane();
     const g = L.layerGroup();
     rows.forEach((p) => {
       if (!U.isNum(+p.lat) || !U.isNum(+p.lng) || !+p.lat) return;
       const m = L.circleMarker([+p.lat, +p.lng], { renderer: S.renderer, pane: 'admin', radius: rows.length > 6000 ? 3 : 4, color: '#065F46', weight: 1, fillColor: '#10b981', fillOpacity: 0.8 });
-      m.bindPopup(() => `<div class="pp"><h4>แปลง ${U.esc(p.key || '')}</h4><table>${[['พันธุ์', p.variety], ['พื้นที่', p.rai ? U.fmt(+p.rai) + ' ไร่' : ''], ['วันปลูก', p.plant_date], ['วันเก็บเกี่ยว', p.harvest_date]].filter((x) => x[1]).map(([k, v]) => `<tr><td>${k}</td><td>${U.esc(v)}</td></tr>`).join('')}</table>
-        <div class="pp-detail" data-key="${U.esc(p.key)}"><button class="btn sm primary" data-detail="${U.esc(p.key)}">🔓 ดูข้อมูลทั้งหมด${isAdmin() ? ' (รวมข้อมูลส่วนบุคคล)' : ''}</button></div><div class="hint">ข้อมูลสำหรับเจ้าหน้าที่ — ห้ามเผยแพร่ · การเปิดดูถูกบันทึก</div></div>`);
+      m.bindPopup(() => `<div class="pp"><h4>แปลง ${U.esc(p.key || '')}</h4>${pp([['พันธุ์', p.variety], ['พื้นที่', p.rai ? U.fmt(+p.rai) + ' ไร่' : ''], ['วันปลูก', p.plant_date], ['วันเก็บเกี่ยว', p.harvest_date], ['หมู่', p.moo], ['ชื่อ', p.owner_name], ['เบอร์โทร', p.phone]])}
+        <div class="pp-detail" data-key="${U.esc(p.key)}"><button class="btn sm primary" data-detail="${U.esc(p.key)}">🔓 ดูข้อมูลทั้งหมด${isAdmin() ? ' (รวมข้อมูลส่วนบุคคล)' : ''}</button></div>
+        <div class="pp-src"><span class="badge src-real">ผังแปลงเกษตรกรรมดิจิทัล ${U.esc(String(cur.year))}</span></div></div>`, { maxWidth: 360 });
       g.addLayer(m);
     });
     S.layer = g.addTo(KPP.Map.map);
-    setInfo(`แสดงพิกัดแปลง ${U.fmt(rows.length)} แปลง${cur.tambon ? ' (ตำบลที่เลือก)' : cur.district ? ' (อำเภอที่เลือก)' : ''}${S.names ? ' · มีชื่อ' : ''}`);
+    if (S.lpLayer) S.lpLayer.eachLayer((l) => l.bringToFront());
+    setInfo(`ผังแปลง ${U.fmt(rows.length)} แปลง${cur.tambon ? ' (ตำบลที่เลือก)' : ' (อำเภอที่เลือก)'}${S.names ? ' · แสดงชื่อ' : ''}${lp}`);
   }
 
   const LBL = { key: 'รหัสกิจกรรม', year: 'ปีเพาะปลูก', district: 'อำเภอ (รหัส)', tambon: 'ตำบล (รหัส)', moo: 'หมู่', lat: 'ละติจูด', lng: 'ลองจิจูด', rai: 'พื้นที่ (ไร่)', variety: 'พันธุ์', plant_date: 'วันปลูก', harvest_date: 'วันเก็บเกี่ยว', owner_name: 'ชื่อ-สกุล', phone: 'เบอร์โทร', note: 'ที่อยู่ / เอกสารสิทธิ์' };

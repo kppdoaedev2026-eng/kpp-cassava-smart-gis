@@ -534,3 +534,10 @@ table.risk tr.warn-row td { background: rgba(250,178,25,.10); }
 .mth summary { cursor: pointer; font-weight: 600; }
 .mth ul { margin: 6px 0 2px; padding-left: 1.1rem; display: grid; gap: 4px; }
 .mth-f { font-family: ui-monospace, Consolas, monospace; font-size: .8rem; background: var(--bg-2, #f1f5f9); border-left: 3px solid #065F46; padding: 4px 8px; margin: 3px 0; border-radius: 4px; white-space: normal; }
+.adm-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0 10px; border-bottom: 1px solid var(--line, #e2e8f0); }
+.adm-tabs button { border: 0; background: none; padding: 6px 10px; font: inherit; font-size: .85rem; cursor: pointer; border-bottom: 3px solid transparent; color: var(--text-2, #475569); }
+.adm-tabs button.on { border-bottom-color: #065F46; color: #065F46; font-weight: 600; }
+.adm-copy { margin: 6px 0; } .adm-copy > span { display: block; font-size: .8rem; font-weight: 600; } .adm-copy > div { display: flex; gap: 6px; }
+.adm-copy input { flex: 1; min-width: 0; font: .78rem ui-monospace, Consolas, monospace; padding: 4px 6px; border: 1px solid var(--line, #cbd5e1); border-radius: 6px; background: var(--bg-2, #f8fafc); color: inherit; }
+.adm-copy small { color: var(--text-3, #64748b); font-size: .72rem; }
+.adm-mapkey { font-weight: 400; font-size: .75rem; margin-top: 3px; display: flex; gap: 4px; align-items: center; } .adm-mapkey i { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid #065F46; display: inline-block; margin-left: 4px; }

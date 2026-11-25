@@ -184,6 +184,33 @@ function handle_(b) {
     audit_(u.code, 'parcel_detail', dyr + ':' + b.key);
     return { ok: true, record: rec };
   }
+  if (a === 'learning_plots') {                // แปลงเรียนรู้/แปลงส่งเสริมจากระบบ CassavaPlot (อ่านชีตของระบบนั้นโดยตรง · ไม่ส่งเลขบัตรประชาชน)
+    var lpId = props_().getProperty('PLOTMON_SHEET_ID');
+    if (!lpId) return { ok: false, error: 'ยังไม่ได้ตั้งค่า PLOTMON_SHEET_ID (Script Properties = รหัส Google Sheet ของระบบ CassavaPlot)' };
+    if (!isAdmin && s.staff_can_view_parcels !== 'TRUE') return { ok: false, error: 'แอดมินยังไม่เปิดสิทธิ์ให้เจ้าหน้าที่ดูพิกัดแปลง', code: 403 };
+    var lsh = SpreadsheetApp.openById(lpId).getSheetByName('แปลง');
+    if (!lsh) return { ok: false, error: 'ไม่พบชีต "แปลง" ในระบบ CassavaPlot' };
+    var lv = lsh.getDataRange().getValues(), lh = lv.shift().map(String);
+    var col = function (nm) { return lh.indexOf(nm); };
+    var DCODE = { 'เมืองกำแพงเพชร': '6201', 'ไทรงาม': '6202', 'คลองลาน': '6203', 'ขาณุวรลักษบุรี': '6204', 'คลองขลุง': '6205', 'พรานกระต่าย': '6206', 'ลานกระบือ': '6207', 'ทรายทองวัฒนา': '6208', 'ปางศิลาทอง': '6209', 'บึงสามัคคี': '6210', 'โกสัมพีนคร': '6211' };
+    var allowD = isAdmin ? null : staffDistricts_(u.code);
+    var showNm = isAdmin || (s.staff_can_view_names === 'TRUE' && s.show_parcel_names === 'TRUE');
+    var F = [['id', 'รหัสแปลง'], ['year', 'ปีงบประมาณ'], ['project', 'ชื่อโครงการ'], ['activity', 'ชื่อกิจกรรม'], ['district_name', 'อำเภอ'], ['tambon_name', 'ตำบล'],
+      ['variety', 'พันธุ์มันสำปะหลัง'], ['variety_type', 'ประเภทพันธุ์'], ['rai', 'พื้นที่(ไร่)'], ['stems', 'จำนวนท่อนพันธุ์ที่ได้รับการสนับสนุน(ลำ)'],
+      ['lat', 'ละติจูด'], ['lng', 'ลองจิจูด'], ['plant_date', 'วันที่ปลูก'], ['harvest_date', 'คาดว่าเก็บเกี่ยววันที่'], ['status', 'สถานะแปลง'], ['irrigation', 'ระบบให้น้ำ']];
+    var P = showNm ? [['owner_name', 'ชื่อเจ้าของแปลง'], ['village', 'บ้านเลขที่/หมู่']] : [];
+    if (isAdmin) P = P.concat([['phone', 'เบอร์โทรศัพท์'], ['address', 'ที่อยู่']]);
+    var lout = [];
+    lv.forEach(function (r) {
+      var o = {}; F.concat(P).forEach(function (f) { var j = col(f[1]); if (j >= 0) o[f[0]] = r[j] instanceof Date ? Utilities.formatDate(r[j], 'Asia/Bangkok', 'yyyy-MM-dd') : r[j]; });
+      if (!o.id) return;
+      o.district = DCODE[String(o.district_name || '').replace(/^อ(ำเภอ|\.)\s*/, '').trim()] || '';
+      if (allowD && allowD.indexOf(o.district) < 0) return;
+      lout.push(o);
+    });
+    audit_(u.code, 'learning_plots', 'n=' + lout.length + (showNm ? ' +names' : ''));
+    return { ok: true, rows: lout, names: showNm };
+  }
   if (a === 'parcels') {                       // พิกัด/ผังแปลง — แอดมินเห็นทั้งหมด · เจ้าหน้าที่เห็นเฉพาะอำเภอที่รับผิดชอบ (คอลัมน์ districts) และเมื่อแอดมินอนุญาต
     var myDistricts = isAdmin ? null : staffDistricts_(u.code);
     if (!isAdmin && (s.staff_can_view_parcels !== 'TRUE' || !myDistricts.length)) return { ok: false, error: 'ยังไม่ได้รับสิทธิ์ดูพิกัดแปลง (ต้องกำหนดอำเภอที่รับผิดชอบ)', code: 403 };
