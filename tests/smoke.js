@@ -12,6 +12,7 @@ window.KPPSmoke = (function () {
     win.addEventListener('error', (e) => errs.push('onerror: ' + e.message));
     win.addEventListener('unhandledrejection', (e) => errs.push('rejection: ' + (e.reason && e.reason.message)));
     const fail = (where, what) => fails.push(where + ' → ' + what);
+    const stk = (e) => String(e.stack).split(String.fromCharCode(10)).slice(1, 3).join(' | ').slice(0, 220);
     const BAD = /\bNaN\b|\bundefined\b|\bInfinity\b|\[object Object\]/;
 
     function check(where) {
@@ -30,17 +31,20 @@ window.KPPSmoke = (function () {
     const districts = [...doc.getElementById('fDistrict').options].map((o) => o.value);   // '' = ทั้งจังหวัด
     for (const m of mods) {
       for (const d of districts) {
-        App.selectDistrict(d || null); App.setModule(m); await sleep(120);
+        try { App.selectDistrict(d || null); App.setModule(m); } catch (e) { fail(`${m}/${d || 'ทั้งจังหวัด'}`, 'เปลี่ยนขอบเขตแล้วเกิดข้อผิดพลาด: ' + e.message + ' @ ' + stk(e)); continue; }
+        await sleep(120);
         const tabs = [...doc.querySelectorAll('#sideTabs .tab')].map((b) => b.dataset.tab);
         for (const t of tabs) {
-          App.showTab(t); await sleep(60);
+          try { App.showTab(t); } catch (e) { fail(`${m}/${t}/${d || 'ทั้งจังหวัด'}`, 'เปิดแท็บแล้วเกิดข้อผิดพลาด: ' + e.message); continue; }
+          await sleep(60);
           check(`${m}/${t}/${d || 'ทั้งจังหวัด'}`);
         }
         // ตำบลตัวอย่าง 2 ตำบลแรกของอำเภอ
         if (d) {
           const tb = [...doc.getElementById('fTambon').options].map((o) => o.value).filter(Boolean).slice(0, 2);
           for (const tcode of tb) {
-            App.selectTambon(tcode); await sleep(100);
+            try { App.selectTambon(tcode); } catch (e) { fail(`${m}/${d}/ต.${tcode}`, 'เลือกตำบลแล้วเกิดข้อผิดพลาด: ' + e.message + ' @ ' + stk(e)); continue; }
+            await sleep(100);
             const cur = doc.querySelector('#sideTabs .tab.active'); check(`${m}/${cur ? cur.dataset.tab : '?'}/${d}/ต.${tcode}`);
           }
           App.selectTambon(null);
