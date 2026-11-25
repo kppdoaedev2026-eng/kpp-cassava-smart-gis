@@ -255,7 +255,7 @@ KPP.App = (function () {
       const k = DA.varietyClass(r.variety);
       if (k === 'resistant') x.oRes += r.rai; else if (k === 'tolerant') x.oTol += r.rai; else x.oGen += r.rai;
     });
-    const list = Object.values(by).filter((r) => !dcode || r.d === dcode)
+    const list = Object.values(by).filter((r) => (!dcode || r.d === dcode) && (r.pmPlots || r.oPlots))
       .sort((a, b) => (b.pmRai + b.oRai) - (a.pmRai + a.oRai));
     const tot = list.reduce((t, r) => { ['pmPlots', 'pmRai', 'oPlots', 'oRai', 'oFarmers', 'oRes', 'oTol', 'oGen', 'dupRai'].forEach((k) => { t[k] += r[k]; }); return t; },
       { pmPlots: 0, pmRai: 0, oPlots: 0, oRai: 0, oFarmers: 0, oRes: 0, oTol: 0, oGen: 0, dupRai: 0 });
@@ -268,7 +268,7 @@ KPP.App = (function () {
     const t = P.tot, MAP = C.SUPPORT_IN_PLOTMON || [];
     return `<h4 class="goal-h">📋 แปลงส่งเสริม + โครงการสนับสนุนท่อนพันธุ์อื่น ปี ${P.year} (รายอำเภอ)</h4>
       <div class="table-wrap"><table class="risk"><thead><tr><th>อำเภอ</th><th>แปลงส่งเสริม CassavaPlot<br>(แปลง)</th><th>ไร่</th><th>โครงการอื่น<br>(แปลง)</th><th>ไร่</th><th>รวม (แปลง)</th><th>รวม (ไร่)</th><th>โครงการอื่น</th></tr></thead><tbody>${
-        P.list.map((r) => `<tr><td class="l">${U.esc(dn(r.d))}</td><td>${U.fmt(r.pmPlots)}</td><td>${U.fmt(r.pmRai, 1)}</td><td>${U.fmt(r.oPlots)}</td><td>${U.fmt(r.oRai, 1)}</td><td><b>${U.fmt(r.pmPlots + r.oPlots)}</b></td><td><b>${U.fmt(r.pmRai + r.oRai, 1)}</b></td><td class="l" style="white-space:normal;font-size:.75rem">${[...r.projects].map((p) => U.esc(p.replace(/\s*\(.*$/, '').slice(0, 40))).join(' · ') || '–'}</td></tr>`).join('')
+        P.list.map((r) => `<tr><td class="l">${U.esc(dn(r.d))}</td><td>${U.fmt(r.pmPlots)}</td><td>${U.fmt(r.pmRai, 1)}</td><td>${U.fmt(r.oPlots)}</td><td>${U.fmt(r.oRai, 1)}</td><td><b>${U.fmt(r.pmPlots + r.oPlots)}</b></td><td><b>${U.fmt(r.pmRai + r.oRai, 1)}</b></td><td class="l" style="white-space:normal;font-size:.75rem">${[...new Set([...r.projects].map((p) => p.replace(/\s*\(.*$/, '').replace(/\s*—.*$/, '').slice(0, 48)))].map(U.esc).join(' · ') || '–'}</td></tr>`).join('')
       }<tr class="total"><td class="l"><b>รวม</b></td><td>${U.fmt(t.pmPlots)}</td><td>${U.fmt(t.pmRai, 1)}</td><td>${U.fmt(t.oPlots)}</td><td>${U.fmt(t.oRai, 1)}</td><td><b>${U.fmt(t.plots)}</b></td><td><b>${U.fmt(t.rai, 1)}</b></td><td></td></tr></tbody></table></div>
       <p class="hint">โครงการอื่นแยกกลุ่มพันธุ์: ต้านทาน ${U.fmt(t.oRes, 1)} ไร่ · ทนทาน ${U.fmt(t.oTol, 1)} ไร่ · ทั่วไป ${U.fmt(t.oGen, 1)} ไร่ · เกษตรกร ${U.fmt(t.oFarmers)} ราย
         · ไม่นับซ้ำ ${U.fmt(t.dupRai, 1)} ไร่ จากโครงการที่ลงทะเบียนแปลงใน CassavaPlot แล้ว (${MAP.map((m) => U.esc(m.match) + ' → ' + U.esc(m.project)).join(' · ')})
