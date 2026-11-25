@@ -15,9 +15,9 @@ KPP.Admin = (function () {
   const isAdmin = () => S.role === 'admin';
   const loggedIn = () => !!S.token;
 
-  function saveSession() { try { sessionStorage.setItem(KEY, JSON.stringify({ t: S.token, r: S.role, n: S.name })); } catch (e) { /* ไม่เก็บ */ } }
+  function saveSession() { try { sessionStorage.setItem(KEY, JSON.stringify({ t: S.token, r: S.role, n: S.name, m: S.mode })); } catch (e) { /* ไม่เก็บ */ } }
   function restore() {
-    try { const o = JSON.parse(sessionStorage.getItem(KEY) || 'null'); if (o && o.t) { S.token = o.t; S.role = o.r; S.name = o.n; } } catch (e) { /* ไม่มี */ }
+    try { const o = JSON.parse(sessionStorage.getItem(KEY) || 'null'); if (o && o.t) { S.token = o.t; S.role = o.r; S.name = o.n; S.mode = o.m === 'parcel' ? 'parcel' : 'grid'; } } catch (e) { /* ไม่มี */ }
   }
 
   function renderButton() {
@@ -125,7 +125,7 @@ KPP.Admin = (function () {
       $('admPinMsg').textContent = r.ok ? 'เปลี่ยนรหัสผ่านแล้ว ครั้งต่อไปใช้รหัสใหม่' : (r.error || 'ไม่สำเร็จ');
       if (r.ok) { $('admOldPin').value = ''; $('admNewPin').value = ''; }
     });
-    $('admMode').addEventListener('click', (e) => { const b = e.target.closest('button[data-mode]'); if (!b || b.disabled) return; S.mode = b.dataset.mode; applyMode(); render(); });
+    $('admMode').addEventListener('click', (e) => { const b = e.target.closest('button[data-mode]'); if (!b || b.disabled) return; S.mode = b.dataset.mode; saveSession(); applyMode(); render(); if (S.mode === 'parcel' && !KPP.App.state.district && isAdmin()) close(); });
     el.querySelectorAll('[data-set]').forEach((i) => i.addEventListener('change', async () => {
       const r = await call({ action: 'set_settings', settings: { [i.dataset.set]: i.checked ? 'TRUE' : 'FALSE' } });
       if (r.ok) { S.settings = r.settings; S.cache = {}; if (S.mode === 'parcel') applyMode(); U.toast('บันทึกการตั้งค่าแล้ว', 'ok'); } else { U.toast(r.error || 'บันทึกไม่สำเร็จ', 'err'); i.checked = !i.checked; }
@@ -139,8 +139,16 @@ KPP.Admin = (function () {
   /* ---------- แสดงพิกัดแปลงบนแผนที่ (เฉพาะเมื่อเข้าสู่ระบบและเลือกโหมดพิกัดแปลง) ----------
      โหลดทีละอำเภอ (แคชในหน้านี้) แล้วกรองตำบลที่เลือกฝั่งเบราว์เซอร์ · แอดมินต้องเลือกอำเภอก่อน (ไม่โหลดทั้งจังหวัด) · เจ้าหน้าที่ได้เฉพาะอำเภอที่มอบหมาย */
   S.cache = {};
-  function clearLayer() { if (S.layer) { KPP.Map.map.removeLayer(S.layer); S.layer = null; } KPP.Map.layers.parcels.on = true; KPP.Map.refresh(); }
-  function setInfo(t) { S.info = t; const el = $('admModeInfo'); if (el) el.textContent = t; }
+  /* แถบสถานะบนแผนที่ (มองเห็นได้แม้ปิดหน้าต่างเจ้าหน้าที่) */
+  function mapNote(t) {
+    const M = KPP.Map.map;
+    if (!S.note) { S.note = L.control({ position: 'topleft' }); S.note.onAdd = () => { const d = L.DomUtil.create('div', 'adm-mapnote'); L.DomEvent.disableClickPropagation(d); return d; }; }
+    if (!t) { if (S.note._map) S.note.remove(); return; }
+    if (!S.note._map) S.note.addTo(M);
+    S.note.getContainer().textContent = '🔐 ' + t;
+  }
+  function clearLayer() { if (S.layer) { KPP.Map.map.removeLayer(S.layer); S.layer = null; } mapNote(''); KPP.Map.layers.parcels.on = true; KPP.Map.refresh(); }
+  function setInfo(t) { S.info = t; const el = $('admModeInfo'); if (el) el.textContent = t; mapNote(t); }
   async function applyMode() {
     if (!loggedIn() || S.mode !== 'parcel') { clearLayer(); return; }
     const st = KPP.App.state, need = isAdmin() && !st.district;
@@ -159,11 +167,12 @@ KPP.Admin = (function () {
     S.names = c.names; S.rows = rows;
     if (S.layer) KPP.Map.map.removeLayer(S.layer);
     KPP.Map.layers.parcels.on = false; KPP.Map.refresh();
-    if (!S.renderer) S.renderer = L.canvas({ padding: 0.3 });
+    if (!KPP.Map.map.getPane('admin')) KPP.Map.map.createPane('admin').style.zIndex = 460;   // อยู่เหนือจุดกริดสาธารณะ ใต้หมุดศูนย์/ป้ายชื่อ
+    if (!S.renderer) S.renderer = L.canvas({ padding: 0.3, pane: 'admin' });
     const g = L.layerGroup();
     rows.forEach((p) => {
       if (!U.isNum(+p.lat) || !U.isNum(+p.lng) || !+p.lat) return;
-      const m = L.circleMarker([+p.lat, +p.lng], { renderer: S.renderer, radius: rows.length > 6000 ? 3 : 4, color: '#065F46', weight: 1, fillColor: '#10b981', fillOpacity: 0.8 });
+      const m = L.circleMarker([+p.lat, +p.lng], { renderer: S.renderer, pane: 'admin', radius: rows.length > 6000 ? 3 : 4, color: '#065F46', weight: 1, fillColor: '#10b981', fillOpacity: 0.8 });
       m.bindPopup(() => `<div class="pp"><h4>แปลง ${U.esc(p.key || '')}</h4><table>${[['พันธุ์', p.variety], ['พื้นที่', p.rai ? U.fmt(+p.rai) + ' ไร่' : ''], ['วันปลูก', p.plant_date], ['วันเก็บเกี่ยว', p.harvest_date]].filter((x) => x[1]).map(([k, v]) => `<tr><td>${k}</td><td>${U.esc(v)}</td></tr>`).join('')}</table>
         <div class="pp-detail" data-key="${U.esc(p.key)}"><button class="btn sm primary" data-detail="${U.esc(p.key)}">🔓 ดูข้อมูลทั้งหมด${isAdmin() ? ' (รวมข้อมูลส่วนบุคคล)' : ''}</button></div><div class="hint">ข้อมูลสำหรับเจ้าหน้าที่ — ห้ามเผยแพร่ · การเปิดดูถูกบันทึก</div></div>`);
       g.addLayer(m);
@@ -184,7 +193,7 @@ KPP.Admin = (function () {
     KPP.Map.map.on('popupopen', (e) => { const b = e.popup.getElement() && e.popup.getElement().querySelector('[data-detail]'); if (b) b.addEventListener('click', () => showDetail(b)); });
     const b = $('btnAdmin'); if (b) b.addEventListener('click', open);
     $('adminModal').addEventListener('click', (e) => { if (e.target.id === 'adminModal' || e.target.closest('[data-close]')) close(); });
-    if (loggedIn()) call({ action: 'whoami' }).then((r) => { if (r.ok) { S.settings = r.settings; S.role = r.user.role; S.code = r.user.code; renderButton(); } else { S.token = null; try { sessionStorage.removeItem(KEY); } catch (e) { /* ไม่เก็บ */ } renderButton(); } });
+    if (loggedIn()) call({ action: 'whoami' }).then((r) => { if (r.ok) { S.settings = r.settings; S.role = r.user.role; S.code = r.user.code; renderButton(); if (S.mode === 'parcel') applyMode(); } else { S.token = null; try { sessionStorage.removeItem(KEY); } catch (e) { /* ไม่เก็บ */ } renderButton(); } });
   }
   return { init, open, loggedIn, isAdmin, call, refresh() { if (loggedIn() && S.mode === 'parcel') applyMode(); } };
 })();

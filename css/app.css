@@ -527,3 +527,10 @@ table.risk tr.warn-row td { background: rgba(250,178,25,.10); }
 
 .exec-top { margin: 0; padding-left: 1.2rem; display: grid; gap: 6px; } .exec-top li small { color: var(--text-3); margin-left: 6px; }
 .exec-dec { margin: 0; padding-left: 1.1rem; display: grid; gap: 6px; }
+
+.lg-note { font-size: .72rem; color: var(--text-3); line-height: 1.35; margin: 2px 0 6px; max-width: 230px; }
+.adm-mapnote { background: #fff; color: #0f172a; border: 2px solid #b2182b; border-radius: 8px; padding: 6px 10px; font-size: .82rem; font-weight: 600; max-width: 340px; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+.mth { border: 1px solid var(--line, #e2e8f0); border-radius: 8px; padding: 6px 10px; margin: 6px 0; }
+.mth summary { cursor: pointer; font-weight: 600; }
+.mth ul { margin: 6px 0 2px; padding-left: 1.1rem; display: grid; gap: 4px; }
+.mth-f { font-family: ui-monospace, Consolas, monospace; font-size: .8rem; background: var(--bg-2, #f1f5f9); border-left: 3px solid #065F46; padding: 4px 8px; margin: 3px 0; border-radius: 4px; white-space: normal; }

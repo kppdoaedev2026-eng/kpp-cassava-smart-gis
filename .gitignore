@@ -14,3 +14,7 @@ __pycache__/
 
 # ชั้นดิน LDD ต้นฉบับ (ใหญ่ ดาวน์โหลดใหม่ได้จาก tswc.ldd.go.th)
 data/source/ldd_soil/
+
+node_modules/
+package.json
+package-lock.json

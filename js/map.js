@@ -84,10 +84,37 @@ KPP.Map = (function () {
     map.on('zoomend moveend', () => { drawParcels(); toggleTambonLabels(); });
     map.on('zoomend', () => { const hi = map.getZoom() >= 12; if (S && hi !== lastHi) { lastHi = hi; buildLegend(); } });
     map.on('click', onMapClick);
+    map.getContainer().addEventListener('click', clickThrough, true);   // คลิกทะลุชั้น canvas ที่ไม่มีจุดตรงตำแหน่งนั้น
     G.floodRenderer.addTo(map);
     injectHatch(G.floodRenderer._container);
     loadSoilSampler();
     return map;
+  }
+
+  /* ชั้นจุด/ชุดดินวาดบน canvas ที่คลุมทั้งกรอบแผนที่ — ถ้าคลิกไม่โดนวัตถุใดใน canvas นั้น ให้ส่งคลิกต่อไปยังชั้นด้านล่าง
+     (เช่น จุดพันธุ์ต้านทานอยู่บนชุดดิน/ขอบเขตอำเภอ) เพื่อให้คลิกดูรายละเอียดได้ทุกชั้นตามลำดับบน→ล่าง */
+  function canvasHit(cv, e) {
+    let r = null;
+    map.eachLayer((l) => { if (l instanceof L.Canvas && l._container === cv) r = l; });
+    if (!r) return true;
+    const p = map.mouseEventToLayerPoint(e);
+    return Object.values(r._layers || {}).some((l) => l.options && l.options.interactive !== false && l._containsPoint && l._containsPoint(p));
+  }
+  let passing = false;
+  function clickThrough(e) {
+    if (passing || !e.target || e.target.tagName !== 'CANVAS' || !e.target.closest('.leaflet-pane')) return;
+    if (canvasHit(e.target, e)) return;
+    e.stopPropagation(); e.preventDefault();
+    const hidden = []; let el = e.target;
+    while (el && el.tagName === 'CANVAS' && el.closest('.leaflet-pane') && !canvasHit(el, e) && hidden.length < 8) {
+      hidden.push([el, el.style.pointerEvents]); el.style.pointerEvents = 'none';
+      el = document.elementFromPoint(e.clientX, e.clientY);
+    }
+    hidden.forEach(([c, v]) => { c.style.pointerEvents = v; });
+    if (!el) return;
+    passing = true;
+    try { el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window, clientX: e.clientX, clientY: e.clientY, screenX: e.screenX, screenY: e.screenY })); }
+    finally { passing = false; }
   }
 
   function injectHatch(svg) {
@@ -776,7 +803,7 @@ KPP.Map = (function () {
       h.push(`<h4>🦠 โรคใบด่างรายอำเภอ <span class="badge src-real">รายงานจริง</span></h4><div class="hint" style="margin:0">ขนาด = พื้นที่ระบาด · ตัวเลข = % ของพื้นที่ปลูก</div>`);
       DA.LV4.slice().reverse().forEach((l) => h.push(`<div class="lg-row"><span class="sw" style="background:${l.color};border-radius:50%"></span>${l.icon} ${l.label}</div>`));
     }
-    if (L_.resist.on) h.push(`<h4>🛡️ พันธุ์ต้านทาน/ทนทาน</h4><div class="lg-row"><span class="proj-icon" style="width:18px;height:18px;font-size:9px"><b>n</b></span>แปลงส่งเสริมพันธุ์ (จำนวนแปลง/ตำบล)</div><div class="lg-row"><span class="sw" style="background:${VCOL.resistant};border-radius:50%"></span>ต้านทาน</div><div class="lg-row"><span class="sw" style="background:${VCOL.tolerant};border-radius:50%"></span>ทนทาน</div>`);
+    if (L_.resist.on) h.push(`<h4>🛡️ พันธุ์ต้านทาน/ทนทาน</h4><div class="lg-row"><span class="proj-icon" style="width:18px;height:18px;font-size:9px"><b>n</b></span>แปลงส่งเสริมพันธุ์ (จำนวนแปลง/ตำบล)</div><div class="lg-row"><span class="sw" style="background:${VCOL.resistant};border-radius:50%"></span>ต้านทาน</div><div class="lg-row"><span class="sw" style="background:${VCOL.tolerant};border-radius:50%"></span>ทนทาน</div>${DA.D.P.aggregated ? '<div class="lg-note">จุดเรียงเป็นตาราง = ศูนย์กลางช่องกริด 1×1 กม. ที่มีแปลงพันธุ์ต้านทาน/ทนทาน (ขนาดตามพื้นที่) ไม่ใช่ตำแหน่งแปลงจริง — เพื่อคุ้มครองข้อมูลส่วนบุคคล</div>' : ''}`);
     if (L_.flood.on) h.push(`<h4>🌊 น้ำท่วมซ้ำซาก</h4><div class="lg-row"><span class="hatch-sw"></span>${DA.D.flood.polygons ? 'ขอบเขตที่นำเข้า' : 'ตำบลน้ำท่วม 2 ปี'}</div>${DA.D.flood.polygons ? '' : '<div class="lg-row"><span class="hatch-sw" style="border-width:2.5px"></span>ตำบลน้ำท่วม ≥ 3 ปี (2563–2569)</div>'}`);
     if (L_.networks.on) {
       h.push('<h4>🏠 ศูนย์เครือข่าย</h4>');

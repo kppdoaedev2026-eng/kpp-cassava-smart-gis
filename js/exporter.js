@@ -46,73 +46,93 @@ KPP.Exporter = (function () {
 
   const tbl = (head, rows) => `<table><tr>${head.map((h) => `<th>${h}</th>`).join('')}</tr>${rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</table>`;
 
+  /* แบ่งตารางยาวเป็นช่วงละไม่เกิน per แถว แต่ละช่วงมีหัวข้อ + หัวตารางซ้ำ — ไม่ให้ตารางถูกตัดกลางแถวข้ามหน้า */
+  function tblBlocks(title, head, rows, after, per = 26) {
+    if (!rows.length) return [];
+    const out = [];
+    for (let i = 0; i < rows.length; i += per) {
+      const last = i + per >= rows.length;
+      out.push(`<h2>${title}${i ? ' (ต่อ)' : ''}</h2>${tbl(head, rows.slice(i, i + per))}${last && after ? after : ''}`);
+    }
+    return out;
+  }
+
   async function pdf() {
     const S = KPP.App.state;
     busy(true, 'กำลังจัดทำรายงานผู้บริหาร…');
+    const host = document.getElementById('reportHost');
     try {
       await KPP.U.lib('html2canvas', 'jspdf');
       await fontsReady();
       const mapCanvas = KPP.Map.renderStatic();
-      const atlasCanvas = KPP.Map.renderAtlasCanvas({ year: S.year, district: S.district, tambon: null });
       const legendHtml = document.getElementById('legend').innerHTML;
       const a = DA.agg(S.year, { district: S.district, tambon: S.tambon });
       const yo = DA.yoy(S.year, { district: S.district, tambon: S.tambon });
       const uw = S.district ? 'ตำบล' : 'อำเภอ';
       const rm = DA.riskMatrix(S.year, S.district).filter((r) => !r.minor);
       const cm = DA.cmdMatrix(S.year, S.district).filter((r) => !r.minor);
+      const hasCmd = cm.some((r) => U.isNum(r.cmd)) || U.isNum(a.cmd);
       const rr = DA.rootRotMatrix(S.district).slice(0, 12);
       const t7 = (window.KPP_LDD ? window.KPP_LDD.table7.rows : []).filter((r) => !S.district || r.district_code === S.district);
       const goal = S.year === 2569 ? KPP.App.cmdGoal(S.district) : null;
       const goalRows = S.year === 2569 ? DA.D.districts.filter((d) => !S.district || d.code === S.district).map((d) => Object.assign({ name: d.name }, KPP.App.cmdGoal(d.code) || {})).filter((r) => r.base > 0).sort((x, y) => y.replant - x.replant) : [];
-      const host = document.getElementById('reportHost');
-      host.innerHTML = `<div class="report" id="rep">
-        <div style="display:flex;gap:12px;align-items:center;margin-bottom:6px"><img src="assets/img/logo-doae.png" style="width:56px;border:0"><img src="assets/img/seal-kpp.png" style="width:56px;border:0">
+      const blocks = [];
+      blocks.push(`<div style="display:flex;gap:12px;align-items:center;margin-bottom:6px"><img src="assets/img/logo-doae.png" style="width:56px;border:0"><img src="assets/img/seal-kpp.png" style="width:56px;border:0">
           <div><h1>รายงานสรุปสถานการณ์มันสำปะหลัง ${U.esc(scopeName(S))} ปีเพาะปลูก ${S.year}</h1>
           <div class="r-sub" style="margin:0">${U.esc(C.TITLE)} · จัดทำเมื่อ ${U.thaiDate()}<br>จัดทำโดย ${U.esc(C.DEVELOPER)} ${U.esc(C.DEVELOPER_TITLE)} ${U.esc(C.DEVELOPER_UNIT)}</div></div></div>
         <div class="r-kpis">
           <div class="r-kpi"><span>พื้นที่ปลูกขึ้นทะเบียน (ไร่)</span><b>${U.fmt(a.planted)}</b><span>${yo.comparable && U.isNum(yo.value) ? 'YoY ' + (yo.value >= 0 ? '+' : '') + U.pct(yo.value) : 'YoY: ต่างแหล่งข้อมูล'}</span></div>
-          <div class="r-kpi"><span>ผลผลิต (ตัน)</span><b>${U.fmt(a.production)}</b><span>${U.fmt(a.yield)} กก./ไร่</span></div>
-          <div class="r-kpi" style="border-left-color:#b2182b"><span>ระบาดใบด่าง (ไร่) ${U.esc(DA.D.rep.cmd ? DA.D.rep.cmd.period.replace(/วัน\S+ที่ /g, '') : '')}</span><b>${U.fmt(a.cmd)}</b><span>${U.pct(a.cmdPct)} ของพื้นที่ปลูก${goal ? ` · เป้าลด ${U.pct(C.CMD_GOAL.reduce, 0)} ≤ ${U.fmt(goal.target)} ไร่` : ''}</span></div>
-          <div class="r-kpi" style="border-left-color:#1a7f37"><span>ต้านทาน + ทนทาน (ไร่)</span><b>${U.fmt(a.resist)}</b><span>${U.pct(a.resistPct)} · ต้านทาน ${U.fmt(a.resistant)} · ทนทาน ${U.fmt(a.tolerant)}</span></div>
+          <div class="r-kpi"><span>ผลผลิต (ตัน)</span><b>${U.fmt(a.production)}</b><span>${U.isNum(a.production) ? U.fmt(a.yield) + ' กก./ไร่' : 'ปีนี้ยังไม่มีสถิติผลผลิตทางการ'}</span></div>
+          <div class="r-kpi" style="border-left-color:#b2182b"><span>ระบาดใบด่าง (ไร่)</span><b>${U.fmt(a.cmd)}</b><span>${hasCmd ? U.pct(a.cmdPct) + ' ของพื้นที่ปลูก' + (goal ? ` · เป้าลด ${U.pct(C.CMD_GOAL.reduce, 0)} ≤ ${U.fmt(goal.target)} ไร่` : '') : 'ไม่มีรายงานระบาดในปีนี้'}</span></div>
+          <div class="r-kpi" style="border-left-color:#1a7f37"><span>ต้านทาน + ทนทาน (ไร่)</span><b>${U.fmt(a.resist)}</b><span>${U.isNum(a.resist) ? U.pct(a.resistPct) + ' · ต้านทาน ' + U.fmt(a.resistant) + ' · ทนทาน ' + U.fmt(a.tolerant) : 'มีข้อมูลรายพันธุ์เฉพาะปี 2569'}</span></div>
           <div class="r-kpi" style="border-left-color:#1d4ed8"><span>ทับซ้อนน้ำท่วมซ้ำซาก (ไร่)</span><b>${U.fmt(a.flood)}</b><span>รากเน่าโคนเน่า: ดัชนี ${a.rrIndex ?? '–'} (${a.rrLevel.label})</span></div>
-        </div>
-        ${KPP.App.summaryHtml(true)}
-        <div style="position:relative"><img src="${mapCanvas.toDataURL('image/jpeg', 0.92)}" alt="แผนที่">
-          <div class="legend" style="position:absolute;left:10px;bottom:10px;max-height:none;background:#fff;color:#0f172a;border-color:#e2e8f0">${legendHtml}</div></div>
-        <h2>ชุดแผนที่วิเคราะห์พื้นที่การจัดการโรคใบด่างมันสำปะหลัง</h2>
-        <img src="${atlasCanvas.toDataURL('image/jpeg', 0.9)}" alt="ชุดแผนที่">
-        ${goalRows.length ? `<h2>เป้าหมายลดพื้นที่ระบาดโรคใบด่าง ${U.pct(C.CMD_GOAL.reduce, 0)} ด้วยพันธุ์ต้านทาน/ทนทาน</h2>
-        ${tbl(['อำเภอ', 'ระบาดฐาน (ไร่)', 'เป้าหมาย ≤ (ไร่)', 'ระบาดล่าสุด (ไร่)', 'ปลูกทดแทน (ไร่)', 'ต้นพันธุ์ (ลำ)', 'แปลงขยาย (ไร่)', 'สนับสนุนแล้ว (ไร่)', '% ของเป้า'], goalRows.map((r) => [U.esc(r.name), U.fmt(r.base), U.fmt(r.target), U.fmt(r.now), U.fmt(r.replant), U.fmtCompact(r.stalks), U.fmt(r.nursery), U.fmt(r.sup.goalRai, 1), U.pct(r.supShare, 1)]))}` : ''}
-        <h2>ตารางการจัดการโรคใบด่างราย${uw}</h2>
-        ${tbl([uw, 'พื้นที่ปลูก', 'ระบาด', '% ระบาด', 'ต้านทาน', 'ทนทาน', 'ทั่วไป', 'อ่อนแอ', 'ดัชนี', 'ระดับ'], cm.map((r) => [U.esc(r.name), U.fmt(r.standing ?? r.planted), U.fmt(r.cmd), U.pct(r.cmdPct), U.fmt(r.resistant), U.fmt(r.tolerant), U.fmt(r.general), U.fmt(r.susceptible), r.cmdIndex ?? '–', r.cmdLevel.icon + ' ' + r.cmdLevel.label]))}
-        <h2>ตารางวิเคราะห์ความเสี่ยงรวมและข้อเสนอแนะ</h2>
-        ${tbl([uw, 'พื้นที่ขึ้นทะเบียน', 'ใบด่าง*', 'ต้านทาน+ทนทาน', 'ทับซ้อนน้ำท่วม', 'ศจช. ใกล้สุด (กม.)', 'คะแนน', 'ระดับ'], rm.map((r) => [U.esc(r.name), U.fmt(r.planted), U.pct(r.cmdPct), U.pct(r.resistPct), U.fmt(r.flood), r.nearestPest ? U.fmt(r.nearestPest.km, 1) : '–', r.score ?? '–', r.level.icon + ' ' + r.level.label]))}
-        <ul>${rm.slice(0, 5).map((r) => `<li><b>${uw}${U.esc(r.name)}</b> (${r.level.label}): ${r.actions.map(U.esc).join(' · ')}</li>`).join('')}</ul>
-        <h2>ตำบลเสี่ยงโรครากเน่าโคนเน่าสูงสุด</h2>
-        ${tbl(['ตำบล', 'อำเภอ', 'ปลูก (ไร่)', 'ปีที่ท่วม', 'ดิน S3+N', 'ปลูกฤดูฝน', 'ดัชนี', 'ระดับ'], rr.map((r) => [U.esc(r.name), U.esc(DA.D.dByCode[r.code.slice(0, 4)].name), U.fmt(r.regPlanted), r.flood ? r.flood.nYears : 0, U.pct(r.soilPoorPct), U.pct(r.rainyPct), r.rrIndex, r.rrLevel.icon + ' ' + r.rrLevel.label]))}
-        <h2>ความเหมาะสมของที่ดินสำหรับมันสำปะหลัง (กรมพัฒนาที่ดิน)</h2>
-        ${tbl(['อำเภอ', 'ศักยภาพ S1', 'S2', 'S3', 'N', 'ปลูกบน S1+S2', 'ปลูกบน S3+N', 'คงเหลือ S1+S2'], t7.map((r) => [U.esc(r.district), U.fmt(r.potential.S1), U.fmt(r.potential.S2), U.fmt(r.potential.S3), U.fmt(r.potential.N), U.fmt(r.planted.S1 + r.planted.S2), U.fmt(r.planted.S3 + r.planted.N), U.fmt(r.remaining.S1 + r.remaining.S2)]))}
-        <div class="r-note">แหล่งข้อมูล: ${U.esc(C.SOURCES.OFFICIAL.note)} · ${U.esc(DA.D.P.source)} · ${U.esc(C.SOURCES.LDD.note)} · ${U.esc(C.SOURCES.FLOOD.note)} · ${U.esc(C.SOURCES.NETWORK.note)}<br>
-        * พื้นที่ระบาดใบด่าง: ${U.esc(C.SOURCES.REPORT.note)} ${U.esc(DA.D.rep.cmd ? DA.D.rep.cmd.period : '')} (มีเฉพาะระดับอำเภอ ไม่ประมาณค่ารายตำบล) · พื้นที่ปลูก 2569: ${U.esc(C.SOURCES.REGISTRY.note)} · ผลผลิตเฉลี่ย = ผลผลิตรวม ÷ เนื้อที่เก็บเกี่ยว × 1,000 · กลุ่มพันธุ์: ต้านทาน/ทนทาน/ทั่วไป/อ่อนแอ ตามการตั้งค่าในระบบ</div>
-      </div>`;
+        </div>`);
+      blocks.push(KPP.App.summaryHtml(true));
+      blocks.push(`<h2>แผนที่ ${U.esc(scopeName(S))} ปี ${S.year}</h2><div style="position:relative"><img src="${mapCanvas.toDataURL('image/jpeg', 0.9)}" alt="แผนที่">
+          <div class="legend" style="position:absolute;left:10px;bottom:10px;max-height:none;background:#fff;color:#0f172a;border-color:#e2e8f0">${legendHtml}</div></div>`);
+      if (hasCmd) {
+        const atlasCanvas = KPP.Map.renderAtlasCanvas({ year: S.year, district: S.district, tambon: null });
+        blocks.push(`<h2>ชุดแผนที่วิเคราะห์พื้นที่การจัดการโรคใบด่างมันสำปะหลัง</h2><img src="${atlasCanvas.toDataURL('image/jpeg', 0.9)}" alt="ชุดแผนที่">`);
+        blocks.push(...tblBlocks(`เป้าหมายลดพื้นที่ระบาดโรคใบด่าง ${U.pct(C.CMD_GOAL.reduce, 0)} ด้วยพันธุ์ต้านทาน/ทนทาน`, ['อำเภอ', 'ระบาดฐาน (ไร่)', 'เป้าหมาย ≤ (ไร่)', 'ระบาดล่าสุด (ไร่)', 'ปลูกทดแทน (ไร่)', 'ต้นพันธุ์ (ลำ)', 'แปลงขยาย (ไร่)', 'สนับสนุนแล้ว (ไร่)', '% ของเป้า'],
+          goalRows.map((r) => [U.esc(r.name), U.fmt(r.base), U.fmt(r.target), U.fmt(r.now), U.fmt(r.replant), U.fmtCompact(r.stalks), U.fmt(r.nursery), U.fmt(r.sup.goalRai, 1), U.pct(r.supShare, 1)])));
+        blocks.push(...tblBlocks(`ตารางการจัดการโรคใบด่างราย${uw}`, [uw, 'พื้นที่ปลูก', 'ระบาด', '% ระบาด', 'ต้านทาน', 'ทนทาน', 'ทั่วไป', 'อ่อนแอ', 'ดัชนี', 'ระดับ'],
+          cm.map((r) => [U.esc(r.name), U.fmt(r.standing ?? r.planted), U.fmt(r.cmd), U.pct(r.cmdPct), U.fmt(r.resistant), U.fmt(r.tolerant), U.fmt(r.general), U.fmt(r.susceptible), r.cmdIndex ?? '–', r.cmdLevel.icon + ' ' + r.cmdLevel.label])));
+      } else {
+        blocks.push(`<h2>โรคใบด่างมันสำปะหลัง</h2><p class="r-note" style="font-size:13px">ปีเพาะปลูก ${S.year} ไม่มีรายงานพื้นที่ระบาด จึงไม่แสดงชุดแผนที่และตารางการจัดการโรค — ดูรายงานปีเพาะปลูก 2569 (${U.esc(DA.D.rep.cmd ? DA.D.rep.cmd.period : '')})</p>`);
+      }
+      blocks.push(...tblBlocks('ตารางวิเคราะห์ความเสี่ยงรวมและข้อเสนอแนะ', [uw, 'พื้นที่ขึ้นทะเบียน', 'ใบด่าง*', 'ต้านทาน+ทนทาน', 'ทับซ้อนน้ำท่วม', 'ศจช. ใกล้สุด (กม.)', 'คะแนน', 'ระดับ'],
+        rm.map((r) => [U.esc(r.name), U.fmt(r.planted), U.pct(r.cmdPct), U.pct(r.resistPct), U.fmt(r.flood), r.nearestPest ? U.fmt(r.nearestPest.km, 1) : '–', r.score ?? '–', r.level.icon + ' ' + r.level.label]),
+        `<ul>${rm.slice(0, 5).map((r) => `<li><b>${uw}${U.esc(r.name)}</b> (${r.level.label}): ${r.actions.map(U.esc).join(' · ')}</li>`).join('')}</ul>`));
+      blocks.push(...tblBlocks('ตำบลเสี่ยงโรครากเน่าโคนเน่าสูงสุด', ['ตำบล', 'อำเภอ', 'ปลูก (ไร่)', 'ปีที่ท่วม', 'ดิน S3+N', 'ปลูกฤดูฝน', 'ดัชนี', 'ระดับ'],
+        rr.map((r) => [U.esc(r.name), U.esc(DA.D.dByCode[r.code.slice(0, 4)].name), U.fmt(r.regPlanted), r.flood ? r.flood.nYears : 0, U.pct(r.soilPoorPct), U.pct(r.rainyPct), r.rrIndex, r.rrLevel.icon + ' ' + r.rrLevel.label])));
+      blocks.push(...tblBlocks('ความเหมาะสมของที่ดินสำหรับมันสำปะหลัง (กรมพัฒนาที่ดิน)', ['อำเภอ', 'ศักยภาพ S1', 'S2', 'S3', 'N', 'ปลูกบน S1+S2', 'ปลูกบน S3+N', 'คงเหลือ S1+S2'],
+        t7.map((r) => [U.esc(r.district), U.fmt(r.potential.S1), U.fmt(r.potential.S2), U.fmt(r.potential.S3), U.fmt(r.potential.N), U.fmt(r.planted.S1 + r.planted.S2), U.fmt(r.planted.S3 + r.planted.N), U.fmt(r.remaining.S1 + r.remaining.S2)])));
+      blocks.push(`<div class="r-note">แหล่งข้อมูล: ${U.esc(C.SOURCES.OFFICIAL.note)} · ${U.esc(DA.D.P.source)} · ${U.esc(C.SOURCES.LDD.note)} · ${U.esc(C.SOURCES.FLOOD.note)} · ${U.esc(C.SOURCES.NETWORK.note)}<br>
+        * พื้นที่ระบาดใบด่าง: ${U.esc(C.SOURCES.REPORT.note)} ${U.esc(DA.D.rep.cmd ? DA.D.rep.cmd.period : '')} (มีเฉพาะระดับอำเภอ ไม่ประมาณค่ารายตำบล) · พื้นที่ปลูก 2569: ${U.esc(C.SOURCES.REGISTRY.note)} · ผลผลิตเฉลี่ย = ผลผลิตรวม ÷ เนื้อที่เก็บเกี่ยว × 1,000 · กลุ่มพันธุ์: ต้านทาน/ทนทาน/ทั่วไป/อ่อนแอ ตามการตั้งค่าในระบบ · หลักการคำนวณทั้งหมด: เมนู ⓘ เกี่ยวกับระบบ</div>`);
+
+      host.innerHTML = `<div class="report" id="rep">${blocks.map((b) => `<section class="r-blk">${b}</section>`).join('')}</div>`;
       await Promise.all([...host.querySelectorAll('img')].map((im) => (im.complete ? 0 : new Promise((r) => { im.onload = im.onerror = r; }))));
-      const canvas = await html2canvas(host.firstElementChild, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
+      /* จัดหน้า: เรนเดอร์ทีละส่วน แล้ววางต่อกันบนหน้า A4 — ส่วนที่ไม่พอที่ว่างในหน้าปัจจุบันขึ้นหน้าใหม่ทั้งส่วน (หัวข้อ ตาราง แผนที่ไม่ถูกแยกจากกัน) */
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      const m = 8, iw = 210 - 2 * m;
-      const pxPerMm = canvas.width / iw, pageH = Math.floor((297 - 2 * m) * pxPerMm);
-      for (let y = 0, page = 0; y < canvas.height; y += pageH, page++) {
-        const h = Math.min(pageH, canvas.height - y);
-        const part = document.createElement('canvas'); part.width = canvas.width; part.height = h;
-        part.getContext('2d').drawImage(canvas, 0, y, canvas.width, h, 0, 0, canvas.width, h);
-        if (page) doc.addPage();
-        doc.addImage(part.toDataURL('image/jpeg', 0.9), 'JPEG', m, m, iw, h / pxPerMm);
+      const m = 10, w = 210 - 2 * m, top = m, bottom = 297 - m - 4, gap = 2.5;
+      const secs = [...host.querySelectorAll('.r-blk')];
+      let y = top;
+      for (const sec of secs) {
+        const cv = await html2canvas(sec, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false });
+        let h = cv.height * w / cv.width, ww = w;
+        if (h > bottom - top) { ww = w * (bottom - top) / h; h = bottom - top; }   // ส่วนที่สูงเกินหนึ่งหน้า: ย่อให้พอดีหน้า
+        if (y + h > bottom && y > top) { doc.addPage(); y = top; }
+        doc.addImage(cv.toDataURL('image/jpeg', 0.9), 'JPEG', m + (w - ww) / 2, y, ww, h);
+        y += h + gap;
       }
+      const n = doc.getNumberOfPages();
+      for (let i = 1; i <= n; i++) { doc.setPage(i); doc.setFontSize(8); doc.setTextColor(120); doc.text(`${i} / ${n}`, 210 - m, 297 - 4, { align: 'right' }); }
+      window.KPP_LAST_PDF = { pages: n, blocks: secs.length };
       doc.save(`รายงานผู้บริหาร_มันสำปะหลัง_${S.year}_${stamp()}.pdf`);
-      host.innerHTML = '';
-      U.toast('สร้างรายงาน PDF แล้ว', 'ok');
+      U.toast(`สร้างรายงาน PDF แล้ว (${n} หน้า)`, 'ok');
     } catch (e) { console.error(e); U.toast('สร้าง PDF ไม่สำเร็จ: ' + e.message, 'err', 6000); }
-    finally { busy(false); }
+    finally { host.innerHTML = ''; busy(false); }
   }
 
   const r0 = (v) => (U.isNum(v) ? Math.round(v) : null);
