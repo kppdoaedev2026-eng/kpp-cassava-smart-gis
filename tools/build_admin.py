@@ -13,6 +13,7 @@ def put(before, add, s):
     return s.replace(before, add + before, 1)
 
 
+s = re.sub(r'      <a class="btn admin-only" id="btnStaffLink".*?</a>\n', '', s, flags=re.S)
 s = put('      <button class="btn icon" id="btnTheme"', '      <button class="btn" id="btnAdmin" title="เข้าสู่ระบบแอดมิน/เจ้าหน้าที่">🔐 เจ้าหน้าที่</button>\n      <button class="btn admin-only" id="btnImport">📥 นำเข้าข้อมูล</button>\n', s)
 s = put('<!-- About -->', '''<!-- Admin / Staff -->
 <div class="modal" id="adminModal" hidden role="dialog" aria-modal="true" aria-labelledby="admTitle">
@@ -24,7 +25,7 @@ s = put('<!-- About -->', '''<!-- Admin / Staff -->
 
 ''', s)
 s = put('<script src="js/app.js', '<script src="js/admin.js?v=%s"></script>\n' % ver, s)
-s = s.replace(' · <a href="admin.html" rel="nofollow">เจ้าหน้าที่</a>', ' · <a href="./">หน้าสาธารณะ</a>')
+s = s.replace('v<span id="appVer"></span></span>', 'v<span id="appVer"></span> · <a href="./">หน้าสาธารณะ</a></span>', 1)
 s = s.replace('<title>ระบบส่งเสริมและจัดการมันสำปะหลังจังหวัดกำแพงเพชร</title>', '<title>เจ้าหน้าที่ · ระบบส่งเสริมและจัดการมันสำปะหลังจังหวัดกำแพงเพชร</title>\n<meta name="robots" content="noindex,nofollow">', 1)
 io.open(os.path.join(ROOT, 'admin.html'), 'w', encoding='utf-8', newline='').write(s)
 print('admin.html v' + ver)

@@ -524,3 +524,6 @@ table.risk tr.warn-row td { background: rgba(250,178,25,.10); }
 .adm-add { margin: 8px 0; } .adm-add summary { cursor: pointer; font-weight: 600; }
 .pp-full td { vertical-align: top; padding: 1px 6px 1px 0; font-size: .78rem; word-break: break-word; } .pp-full td:first-child { color: var(--text-3); white-space: nowrap; }
 .modal-card.narrow:has(.adm-head) { width: min(760px, 100%); }
+
+.exec-top { margin: 0; padding-left: 1.2rem; display: grid; gap: 6px; } .exec-top li small { color: var(--text-3); margin-left: 6px; }
+.exec-dec { margin: 0; padding-left: 1.1rem; display: grid; gap: 6px; }

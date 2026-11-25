@@ -363,6 +363,7 @@ KPP.App = (function () {
   const MODULES = {
     overview: {
       tabs: [
+        { id: 'exec', label: '⭐ สรุปผู้บริหาร', html: execHtml },
         { id: 'sum', label: 'บทสรุป', html: () => summaryHtml() },
         { id: 'ov', label: 'กราฟภาพรวม', html: () => card2('เปรียบเทียบรายพื้นที่', `<span class="sub">${state.district ? 'รายตำบล' : 'รายอำเภอ'} · ปี ${state.year} · ไร่</span>`, '<div class="chart-legend" id="cmpLegend"></div><div class="chart-box tall"><canvas id="chCompare"></canvas></div>')
             + `<div class="grid2">${card2('พื้นที่ระบาดใบด่างตามอายุพืช', srcBadge('REPORT'), '<div class="chart-legend" id="ageLegend"></div><div class="chart-box"><canvas id="chDonut"></canvas></div><p class="note" id="ageSub"></p>')}
@@ -433,6 +434,30 @@ KPP.App = (function () {
   }
   function showTab(id) { state.tab[state.module] = id; renderSide(); }
   const activeTab = () => state.tab[state.module] || MODULES[state.module].tabs[0].id;
+
+  /* ----- สรุปผู้บริหาร: 1 หน้า ตอบ 5 คำถาม (ปลูกเท่าไร · ผลผลิต/ราคา · ระบาดเท่าไร · เป้า 30% ไปถึงไหน · ที่ไหนเสี่ยง) ----- */
+  function execHtml() {
+    const S = state, fl = f(), a = DA.agg(S.year, fl), ly = lastOfficialYear(), off = DA.agg(ly, fl), pr = latestPrice();
+    const scope = S.tambon ? 'ต.' + DA.D.tambons[S.tambon].name : S.district ? 'อ.' + DA.D.dByCode[S.district].name : 'จ.กำแพงเพชร';
+    const g = cmdGoal(S.district), dn = doneTotal(S.district);
+    const top = DA.riskMatrix(S.year, S.district).filter((r) => !r.minor && U.isNum(r.score)).sort((x, y) => y.score - x.score).slice(0, 5);
+    const q = (title, val, unit, detail, extra) => `<div><span>${title}</span><b>${val}</b> ${unit}<small>${detail || ''}</small>${extra || ''}</div>`;
+    const planted = U.isNum(a.standing) ? a.standing : a.planted;
+    const tiles = [
+      q('1 · ปลูกมันสำปะหลังเท่าไร', U.fmt(planted), 'ไร่', `${U.isNum(a.hh) ? U.fmt(a.hh) + ' ครัวเรือนขึ้นทะเบียน · ' : ''}ทะเบียนครอบคลุม ${U.isNum(a.coverage) ? U.pct(a.coverage, 0) : '–'}`),
+      q(`2 · ผลผลิตและราคา (ปี ${ly})`, U.fmt(off.production), 'ตัน', `${U.fmt(off.yield)} กก./ไร่${pr ? ' · ราคาหัวสด ' + pr.price.toFixed(2) + ' บาท/กก.' : ''}`),
+      q('3 · โรคใบด่างระบาดเท่าไร', U.fmt(a.cmd), 'ไร่', U.isNum(a.cmd) ? `${U.pct(a.cmdPct)} ของพื้นที่ปลูก ${status(a.cmdSeverity)}${a.cmdFarmers ? ' · ' + U.fmt(a.cmdFarmers) + ' ราย' : ''}` : 'ยังไม่มีผลสำรวจ'),
+      g ? q(`4 · เป้าลดระบาด ${U.pct(C.CMD_GOAL.reduce, 0)} ไปถึงไหน`, U.fmt(dn.lo, 0), `จาก ${U.fmt(g.replant)} ไร่ที่ต้องทดแทน`, `ดำเนินการแล้ว ${U.pct(U.safeDiv(dn.lo, g.replant), 1)} · เป้าระบาด ≤ ${U.fmt(g.target)} ไร่`, bar(U.safeDiv(dn.lo, g.replant), '#0f766e')) : q('4 · เป้าลดระบาด', '–', '', 'ไม่มีข้อมูลรายงานโรค')
+    ].join('');
+    const topHtml = top.length ? `<ol class="exec-top">${top.map((r) => `<li><b>${U.esc(r.name)}</b> ${status(r.level)} <small>ระบาด ${U.pct(r.cmdPct)} · ต้านทาน+ทนทาน ${U.pct(r.resistPct)} · คะแนน ${r.score}</small></li>`).join('')}</ol>` : '<p class="hint">ไม่มีพื้นที่ที่คำนวณคะแนนได้</p>';
+    const dec = [];
+    if (g && g.replant > 0) dec.push(`<b>ทดแทนพันธุ์:</b> ต้องปลูกพันธุ์ต้านทาน/ทนทานทดแทนในพื้นที่ระบาดอีก <b>${U.fmt(Math.max(0, g.replant - dn.lo))}</b> ไร่ (ต้นพันธุ์ ≈ ${U.fmtCompact(Math.max(0, g.replant - dn.lo) * C.CMD_GOAL.stalksPerRai)} ลำ)`);
+    if (top.length) dec.push(`<b>เร่งควบคุมโรค:</b> ${top.slice(0, 3).map((r) => U.esc(r.name)).join(' · ')}`);
+    if (U.isNum(a.regGap) && a.regGap > 0) dec.push(`<b>ทะเบียนเกษตรกร:</b> ยังไม่ขึ้นทะเบียน ${U.fmt(a.regGap)} ไร่ — เร่งขึ้นทะเบียนเพื่อให้ข้อมูลครอบคลุม`);
+    return card2(`สรุปผู้บริหาร · ${scope} · ปี ${S.year}`, srcBadge('REPORT'), `<div class="goal-grid exec-grid">${tiles}</div>`)
+      + card2('5 · พื้นที่เสี่ยงสูงสุด 5 อันดับ', srcBadge('MODEL'), topHtml)
+      + card2('สิ่งที่ต้องตัดสินใจ', '', `<ul class="exec-dec">${dec.map((x) => '<li>' + x + '</li>').join('')}</ul><p class="hint">รายละเอียดเพิ่มเติม: แท็บ "บทสรุป" (3 หัวข้อ) · เมนู "การจัดการโรคใบด่าง" (เป้าหมาย 30%) · "สถานการณ์การผลิต"</p>`);
+  }
 
   /* ----- บทสรุป 3 หัวข้อ: การผลิต · ปัญหา/ผลกระทบ · แนวทางพัฒนา (คำนวณจากข้อมูลจริงในระบบ) ----- */
   function summaryHtml(forReport) {
