@@ -247,7 +247,11 @@ KPP.App = (function () {
     const S = DA.D.rep.support, rp = DA.D.rep.resist_plots, MAP = C.SUPPORT_IN_PLOTMON || [];
     const by = {};
     const row = (d) => by[d] || (by[d] = { d, pmPlots: 0, pmRai: 0, oPlots: 0, oRai: 0, oFarmers: 0, oRes: 0, oTol: 0, oGen: 0, dupRai: 0, projects: new Set() });
-    if (rp) Object.entries(rp.tambons).forEach(([t, v]) => { const r = row(t.slice(0, 4)); r.pmPlots += v.plots; r.pmRai += v.rai; });
+    // แปลงในระบบ CassavaPlot: ใช้ยอดสดรายอำเภอ (api_publicDashboard) ถ้ามี · ไม่มีใช้ทะเบียนแปลงส่งเสริม (CSV)
+    const pm = DA.D.rep.plot_monitor, byName = {};
+    DA.D.districts.forEach((d) => { byName[d.name] = d.code; });
+    if (pm && pm.byDistrict && pm.byDistrict.length) pm.byDistrict.forEach((x) => { const r = row(byName[String(x.district).replace(/^อ(ำเภอ|\.)\s*/, '').trim()] || '_'); r.pmPlots += x.plots || 0; r.pmRai += x.area || 0; });
+    else if (rp) Object.entries(rp.tambons).forEach(([t, v]) => { const r = row(t.slice(0, 4)); r.pmPlots += v.plots; r.pmRai += v.rai; });
     ((S && S.records) || []).filter((r) => r.year === year).forEach((r) => {
       const x = row(r.d || '_');
       if (MAP.some((m) => r.project.includes(m.match))) { x.dupRai += r.rai; return; }
@@ -260,7 +264,7 @@ KPP.App = (function () {
     const tot = list.reduce((t, r) => { ['pmPlots', 'pmRai', 'oPlots', 'oRai', 'oFarmers', 'oRes', 'oTol', 'oGen', 'dupRai'].forEach((k) => { t[k] += r[k]; }); return t; },
       { pmPlots: 0, pmRai: 0, oPlots: 0, oRai: 0, oFarmers: 0, oRes: 0, oTol: 0, oGen: 0, dupRai: 0 });
     tot.plots = tot.pmPlots + tot.oPlots; tot.rai = tot.pmRai + tot.oRai;
-    return { list, tot, year };
+    return { list, tot, year, live: !!(pm && pm.byDistrict && pm.byDistrict.length), pmAt: pm ? (pm.updatedAt || pm.fetched_at || '') : '' };
   }
   function programTableHtml() {
     const P = programYear(state.district), dn = (d) => (d === '_' ? 'ไม่ระบุอำเภอ' : (DA.D.dByCode[d] || {}).name || d);
@@ -270,7 +274,7 @@ KPP.App = (function () {
       <div class="table-wrap"><table class="risk"><thead><tr><th>อำเภอ</th><th>แปลงส่งเสริม CassavaPlot<br>(แปลง)</th><th>ไร่</th><th>โครงการอื่น<br>(แปลง)</th><th>ไร่</th><th>รวม (แปลง)</th><th>รวม (ไร่)</th><th>โครงการอื่น</th></tr></thead><tbody>${
         P.list.map((r) => `<tr><td class="l">${U.esc(dn(r.d))}</td><td>${U.fmt(r.pmPlots)}</td><td>${U.fmt(r.pmRai, 1)}</td><td>${U.fmt(r.oPlots)}</td><td>${U.fmt(r.oRai, 1)}</td><td><b>${U.fmt(r.pmPlots + r.oPlots)}</b></td><td><b>${U.fmt(r.pmRai + r.oRai, 1)}</b></td><td class="l" style="white-space:normal;font-size:.75rem">${[...new Set([...r.projects].map((p) => p.replace(/\s*\(.*$/, '').replace(/\s*—.*$/, '').slice(0, 48)))].map(U.esc).join(' · ') || '–'}</td></tr>`).join('')
       }<tr class="total"><td class="l"><b>รวม</b></td><td>${U.fmt(t.pmPlots)}</td><td>${U.fmt(t.pmRai, 1)}</td><td>${U.fmt(t.oPlots)}</td><td>${U.fmt(t.oRai, 1)}</td><td><b>${U.fmt(t.plots)}</b></td><td><b>${U.fmt(t.rai, 1)}</b></td><td></td></tr></tbody></table></div>
-      <p class="hint">โครงการอื่นแยกกลุ่มพันธุ์: ต้านทาน ${U.fmt(t.oRes, 1)} ไร่ · ทนทาน ${U.fmt(t.oTol, 1)} ไร่ · ทั่วไป ${U.fmt(t.oGen, 1)} ไร่ · เกษตรกร ${U.fmt(t.oFarmers)} ราย
+      <p class="hint">แปลงส่งเสริม CassavaPlot: ${P.live ? 'ยอดล่าสุดจากระบบ' + (P.pmAt ? ' (' + U.esc(String(P.pmAt)) + ')' : '') : 'ทะเบียนแปลงส่งเสริม (ไฟล์)'} · โครงการอื่นแยกกลุ่มพันธุ์: ต้านทาน ${U.fmt(t.oRes, 1)} ไร่ · ทนทาน ${U.fmt(t.oTol, 1)} ไร่ · ทั่วไป ${U.fmt(t.oGen, 1)} ไร่ · เกษตรกร ${U.fmt(t.oFarmers)} ราย
         · ไม่นับซ้ำ ${U.fmt(t.dupRai, 1)} ไร่ จากโครงการที่ลงทะเบียนแปลงใน CassavaPlot แล้ว (${MAP.map((m) => U.esc(m.match) + ' → ' + U.esc(m.project)).join(' · ')})
         · จำนวนแปลงของโครงการอื่นใช้จำนวนแปลงที่ระบุ ถ้าไม่ระบุใช้จำนวนเกษตรกร</p>`;
   }
