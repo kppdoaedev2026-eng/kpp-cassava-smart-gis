@@ -132,9 +132,12 @@ KPP.App = (function () {
       const rp = DA.D.rep.resist_plots;
       h = card('#2a78d6', 'พื้นที่ปลูก (รายงานโรค)', U.fmt(a.standing ?? a.planted), 'ไร่', `${a.standingFarmers ? U.fmt(a.standingFarmers) + ' ราย · ' : ''}ทะเบียน ${U.fmt(a.planted)} ไร่`, a.src.disease || a.src.area)
         + card('var(--critical)', 'พื้นที่ระบาดใบด่าง', U.fmt(a.cmd), 'ไร่', U.isNum(a.cmd) ? `${U.pct(a.cmdPct)} ของพื้นที่ปลูก ${status(a.cmdSeverity)}${a.cmdFarmers ? ' · ' + U.fmt(a.cmdFarmers) + ' ราย' : ''}` : 'ไม่มีรายงานในปีนี้', a.src.disease)
-        + card('#1a7f37', 'พันธุ์ต้านทาน', U.fmt(a.resistant), 'ไร่', `${U.pct(a.resistantPct, 2)} · อิทธิ 1–3 ${bar(a.resistantPct / 0.3, '#1a7f37')}`, a.src.resist)
-        + card('#8fd16a', 'พันธุ์ทนทาน', U.fmt(a.tolerant), 'ไร่', `${U.pct(a.tolerantPct)} · ห้วยบง 60, เกษตรศาสตร์ 50, ระยอง 72 ${bar(a.tolerantPct / 0.3, '#5aa832')}`, a.src.resist)
-        + (rp ? card('#0f766e', 'แปลงส่งเสริมพันธุ์ต้านทาน', U.fmt(a.projPlots), 'แปลง', `${U.fmt(a.projRai, 1)} ไร่ · ท่อนพันธุ์ ${U.fmtCompact(a.projCuttings)} ท่อน`, 'PROJECT') : '')
+        + (() => {
+          const sp = supportSum(state.district), dn = doneTotal(state.district), sl = (c) => `<br><b>สนับสนุนท่อนพันธุ์แล้ว ${U.fmt(c.rai, 1)} ไร่</b> · ${U.fmtCompact(c.stalks)} ลำ${c.farmers ? ' · ' + U.fmt(c.farmers) + ' ราย' : ''}`;
+          return card('#1a7f37', 'พันธุ์ต้านทาน', U.fmt(a.resistant), 'ไร่', `ในผังแปลง ${U.pct(a.resistantPct, 2)} · อิทธิ 1–3${sl(sp.cls.resistant)} ${bar(a.resistantPct / 0.3, '#1a7f37')}`, a.src.resist)
+            + card('#8fd16a', 'พันธุ์ทนทาน', U.fmt(a.tolerant), 'ไร่', `ในผังแปลง ${U.pct(a.tolerantPct)} · ห้วยบง 60, เกษตรศาสตร์ 50, ระยอง 72${sl(sp.cls.tolerant)} ${bar(a.tolerantPct / 0.3, '#5aa832')}`, a.src.resist)
+            + (rp ? card('#0f766e', 'แปลงส่งเสริมพันธุ์ต้านทาน', U.fmt(a.projPlots), 'แปลง', `${U.fmt(a.projRai, 1)} ไร่ · ท่อนพันธุ์ ${U.fmtCompact(a.projCuttings)} ท่อน<br>สนับสนุนท่อนพันธุ์ (ต้านทาน+ทนทาน) ${U.fmt(sp.cls.resistant.rai + sp.cls.tolerant.rai, 1)} ไร่ · ${U.fmtCompact(sp.cls.resistant.stalks + sp.cls.tolerant.stalks)} ลำ<br><b>ดำเนินการแล้วรวม ≈ ${U.fmt(dn.lo, 1)} ไร่</b> <small>(ช่วง ${U.fmt(dn.lo, 1)}–${U.fmt(dn.hi, 1)} · ตัดซ้ำสนับสนุน/แปลงส่งเสริมระดับอำเภอ)</small><br>ปลูกจริงในผังแปลง ${U.fmt(a.resist, 1)} ไร่ <small>(สถานะปัจจุบัน ไม่นำมาบวก)</small>`, 'PROJECT') : '');
+        })()
         + (() => {
           const g = cmdGoal(state.district);
           return g ? card('#b2182b', `เป้าหมายลดระบาด ${U.pct(C.CMD_GOAL.reduce, 0)}`, '≤ ' + U.fmt(g.target), 'ไร่', `ปลูกพันธุ์ต้านทาน/ทนทานทดแทน <b>${U.fmt(g.replant)}</b> ไร่ · สนับสนุนแล้ว ${U.fmt(g.sup.goalRai)} ไร่ (${U.pct(g.supShare, 1)}) · ลดระบาดได้ ${U.pct(g.progress, 0)}${bar(g.supShare, '#0f766e')}`, 'REPORT') : '';
@@ -180,15 +183,28 @@ KPP.App = (function () {
   const isResistVar = (v) => { const k = DA.varietyClass(v); return k === 'resistant' || k === 'tolerant'; };
   function supportSum(dcode) {
     const S = DA.D.rep.support, G = C.CMD_GOAL;
-    const o = { rai: 0, stalks: 0, farmers: 0, goalRai: 0, goalStalks: 0, n: 0, unassigned: 0 };
+    const o = { rai: 0, stalks: 0, farmers: 0, goalRai: 0, goalStalks: 0, n: 0, unassigned: 0, cls: { resistant: { rai: 0, stalks: 0, farmers: 0, plots: 0 }, tolerant: { rai: 0, stalks: 0, farmers: 0, plots: 0 } } };
     if (!S) return o;
     S.records.forEach((r) => {
       if (dcode && r.d !== dcode) return;
       o.n++; o.rai += r.rai; o.stalks += r.stalks; o.farmers += r.farmers || 0;
       if (!r.d) o.unassigned += r.rai;
+      const kc = DA.varietyClass(r.variety); if (o.cls[kc]) { const c = o.cls[kc]; c.rai += r.rai; c.stalks += r.stalks; c.farmers += r.farmers || 0; c.plots += r.plots || 0; }
       if (isResistVar(r.variety) && (r.year || 0) >= G.supportFromYear) { o.goalRai += r.rai; o.goalStalks += r.stalks; }
     });
     return o;
+  }
+  /* ยอด "ดำเนินการแล้ว" = ทะเบียนสนับสนุนพันธุ์ (ต้านทาน+ทนทาน ทุกปี) รวมกับแปลงส่งเสริม โดยตัดซ้ำระดับอำเภอ
+     ขั้นต่ำ = Σ max(สนับสนุน, แปลงส่งเสริม) ต่ออำเภอ (กรณีแปลงส่งเสริมเป็นส่วนหนึ่งของที่สนับสนุน) · ขั้นสูง = Σ (สนับสนุน + แปลงส่งเสริม)
+     ไม่รวมผังแปลง เพราะเป็นพื้นที่ปลูกจริงปัจจุบัน (รวมที่ได้รับสนับสนุนแล้ว) ไม่ใช่การดำเนินการ — บวกจะนับซ้ำ */
+  function doneTotal(dcode) {
+    const S = DA.D.rep.support, rp = DA.D.rep.resist_plots, sup = {}, pl = {};
+    ((S && S.records) || []).forEach((r) => { if (isResistVar(r.variety)) { const k = r.d || '_'; sup[k] = (sup[k] || 0) + r.rai; } });
+    if (rp) Object.entries(rp.tambons).forEach(([t, v]) => { const k = t.slice(0, 4); pl[k] = (pl[k] || 0) + v.rai; });
+    const ks = dcode ? [dcode] : [...new Set([...Object.keys(sup), ...Object.keys(pl)])];
+    let lo = 0, hi = 0;
+    ks.forEach((k) => { const x = sup[k] || 0, y = pl[k] || 0; lo += Math.max(x, y); hi += x + y; });
+    return { lo, hi };
   }
   function cmdGoal(dcode) {
     const G = C.CMD_GOAL, h = cmdHist();
