@@ -156,7 +156,7 @@ KPP.Map = (function () {
     Object.assign(L_.networks, { pest: true, soil: m === 'soil', lc: m === 'overview', farm: m !== 'rootrot' });
     if (PRESET) applyPreset(m);
   }
-  /* ---------- ชุดชั้นข้อมูลตามคำถาม (โหมดทดลอง ?preset=1) ----------
+  /* ---------- ชุดชั้นข้อมูลตามคำถาม (ค่าเริ่มต้น) ----------
      แต่ละโมดูลตอบคำถามเดียว: ชั้นหลัก 1 ชั้น + บริบทไม่เกิน 2 · ที่เหลือปิด (เปิดเองได้จากแผงชั้นข้อมูล) · เปลี่ยนโมดูล = กลับชุดมาตรฐาน */
   const PRESETS = {
     overview: { q: 'ที่ไหนต้องเร่งดำเนินการก่อน', metric: 'risk', on: ['choro', 'tambons'] },
@@ -165,11 +165,7 @@ KPP.Map = (function () {
     rootrot: { q: 'ตำบลไหนเสี่ยงรากเน่าโคนเน่าจากน้ำท่วม ดิน และฤดูปลูก', metric: 'rrIndex', on: ['choro', 'flood'] },
     soil: { q: 'มันสำปะหลังปลูกบนดินที่เหมาะสมหรือไม่', metric: 'soilPoorPct', on: ['soil', 'parcels'] }
   };
-  const PRESET = (() => {
-    const m = location.search.match(/[?&]preset=([01])/);
-    if (m) U.store('kpp.preset', m[1] === '1' ? 1 : 0);
-    return U.store('kpp.preset') === 1;
-  })();
+  const PRESET = !/[?&]preset=0/.test(location.search);   // ค่าเริ่มต้น (v4.13) · ?preset=0 = แผนที่แบบเดิมสำหรับเทียบ
   function applyPreset(m) {
     const p = PRESETS[m]; if (!p) return;
     ['choro', 'tambons', 'villages', 'parcels', 'disease', 'resist', 'flood', 'soil', 'series', 'networks'].forEach((k) => { L_[k].on = p.on.includes(k); });
@@ -185,7 +181,7 @@ KPP.Map = (function () {
       el = document.createElement('div'); el.id = 'mapQ'; el.className = 'map-q';
       map.getContainer().appendChild(el); L.DomEvent.disableClickPropagation(el);
     }
-    el.innerHTML = `<span class="map-q-tag">ทดลอง</span><b>${U.esc(q)}</b><button type="button" data-act="reset" title="กลับเป็นชุดชั้นข้อมูลมาตรฐานของโมดูลนี้">คืนค่าชุดมาตรฐาน</button><a href="?preset=0" title="กลับไปใช้แผนที่แบบเดิม">แบบเดิม</a>`;
+    el.innerHTML = `<span class="map-q-tag">คำถาม</span><b>${U.esc(q)}</b><button type="button" data-act="reset" title="กลับเป็นชุดชั้นข้อมูลมาตรฐานของโมดูลนี้ (หลังเปิด/ปิดชั้นเอง)">คืนค่าชุดมาตรฐาน</button>`;
     el.querySelector('[data-act=reset]').onclick = () => KPP.App.setModule(module);
   }
   const tambonLevel = () => module === 'rootrot' || module === 'soil';
@@ -233,7 +229,25 @@ KPP.Map = (function () {
     if (!U.isNum(x) || !U.isNum(y)) return NA;
     return BIV_COLORS[tri(y, b.y.br)][tri(x, b.x.br)];
   }
+  /* โมดูลการผลิต: วงกลมขนาดตามผลผลิต (ตัน) ซ้อนบนสีพื้นที่ปลูก — สองตัวแปรในแผนที่เดียว (พื้นที่ = สี, ปริมาณ = ขนาด) */
+  function drawProdBubbles() {
+    if (G.prodB) { map.removeLayer(G.prodB); G.prodB = null; }
+    if (!PRESET || module !== 'prod' || !L_.choro.on || L_.style !== 'choro' || L_.choro.metric !== 'planted') return;
+    const vals = units.map((u) => u.production).filter((v) => U.isNum(v) && v > 0);
+    if (!vals.length) return;
+    const max = Math.max(...vals);
+    G.prodB = L.layerGroup().addTo(map);
+    units.forEach((u) => {
+      if (!U.isNum(u.production) || u.production <= 0) return;
+      const c = u.code.length === 4 ? (() => { const b = L.geoJSON(DA.D.dByCode[u.code].feature).getBounds().getCenter(); return [b.lat, b.lng]; })() : DA.D.centroid[u.code];
+      if (!c) return;
+      L.circleMarker(c, { pane: 'outline', radius: 4 + 26 * Math.sqrt(u.production / max), color: '#854F0B', weight: 1.2, fillColor: '#EF9F27', fillOpacity: 0.55 })
+        .bindTooltip(`<b>${U.esc(u.name)}</b><br>ผลผลิต ${U.fmt(u.production)} ตัน · พื้นที่ปลูก ${U.fmt(u.planted)} ไร่`, { sticky: true, direction: 'top' })
+        .on('click', () => (u.code.length === 6 ? KPP.App.selectTambon(u.code) : KPP.App.selectDistrict(u.code))).addTo(G.prodB);
+    });
+  }
   function drawSymbols() {
+    drawProdBubbles();
     if (G.sym) { map.removeLayer(G.sym); G.sym = null; }
     if (!L_.choro.on || (L_.style !== 'bubble' && L_.style !== 'label')) return;
     G.sym = L.layerGroup().addTo(map);
@@ -837,6 +851,7 @@ KPP.Map = (function () {
       DA.LV4.slice().reverse().forEach((l) => h.push(`<div class="lg-row"><span class="sw" style="background:${l.color};border-radius:50%"></span>${l.icon} ${l.label}</div>`));
     }
     if (L_.resist.on) h.push(`<h4>🛡️ พันธุ์ต้านทาน/ทนทาน</h4><div class="lg-row"><span class="proj-icon" style="width:18px;height:18px;font-size:9px"><b>n</b></span>แปลงส่งเสริมพันธุ์ (จำนวนแปลง/ตำบล)</div><div class="lg-row"><span class="sw" style="background:${VCOL.resistant};border-radius:50%"></span>ต้านทาน</div><div class="lg-row"><span class="sw" style="background:${VCOL.tolerant};border-radius:50%"></span>ทนทาน</div>${DA.D.P.aggregated ? '<div class="lg-note">จุดเรียงเป็นตาราง = ศูนย์กลางช่องกริด 1×1 กม. ที่มีแปลงพันธุ์ต้านทาน/ทนทาน (ขนาดตามพื้นที่) ไม่ใช่ตำแหน่งแปลงจริง — เพื่อคุ้มครองข้อมูลส่วนบุคคล</div>' : ''}`);
+    if (G.prodB) h.push(`<h4>🟠 ผลผลิต (ตัน)</h4><div class="lg-row"><span class="sw" style="background:#EF9F27;border-radius:50%;border:1px solid #854F0B"></span>ขนาดวงกลมตามผลผลิต</div>`);
     if (L_.flood.on) h.push(`<h4>🌊 น้ำท่วมซ้ำซาก</h4><div class="lg-row"><span class="hatch-sw"></span>${DA.D.flood.polygons ? 'ขอบเขตที่นำเข้า' : 'ตำบลน้ำท่วม 2 ปี'}</div>${DA.D.flood.polygons ? '' : '<div class="lg-row"><span class="hatch-sw" style="border-width:2.5px"></span>ตำบลน้ำท่วม ≥ 3 ปี (2563–2569)</div>'}`);
     if (L_.networks.on) {
       h.push('<h4>🏠 ศูนย์เครือข่าย</h4>');
