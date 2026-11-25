@@ -541,3 +541,7 @@ table.risk tr.warn-row td { background: rgba(250,178,25,.10); }
 .adm-copy input { flex: 1; min-width: 0; font: .78rem ui-monospace, Consolas, monospace; padding: 4px 6px; border: 1px solid var(--line, #cbd5e1); border-radius: 6px; background: var(--bg-2, #f8fafc); color: inherit; }
 .adm-copy small { color: var(--text-3, #64748b); font-size: .72rem; }
 .adm-mapkey { font-weight: 400; font-size: .75rem; margin-top: 3px; display: flex; gap: 4px; align-items: center; } .adm-mapkey i { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid #065F46; display: inline-block; margin-left: 4px; }
+.map-q { position: absolute; top: 54px; left: 50%; transform: translateX(-50%); z-index: 800; display: flex; align-items: center; gap: 8px; background: #fff; color: #0f172a; border: 1.5px solid #065F46; border-radius: 999px; padding: 5px 8px 5px 6px; font-size: .85rem; box-shadow: 0 2px 8px rgba(0,0,0,.15); max-width: calc(100% - 24px); }
+.map-q b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.map-q-tag { background: #065F46; color: #fff; border-radius: 999px; padding: 1px 8px; font-size: .72rem; }
+.map-q button, .map-q a { font: inherit; font-size: .75rem; border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a; border-radius: 999px; padding: 2px 8px; cursor: pointer; text-decoration: none; white-space: nowrap; }

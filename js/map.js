@@ -154,6 +154,39 @@ KPP.Map = (function () {
     L_.choro.opacity = m === 'soil' ? 0.55 : 0.8;
     L_.networks.on = true;
     Object.assign(L_.networks, { pest: true, soil: m === 'soil', lc: m === 'overview', farm: m !== 'rootrot' });
+    if (PRESET) applyPreset(m);
+  }
+  /* ---------- ชุดชั้นข้อมูลตามคำถาม (โหมดทดลอง ?preset=1) ----------
+     แต่ละโมดูลตอบคำถามเดียว: ชั้นหลัก 1 ชั้น + บริบทไม่เกิน 2 · ที่เหลือปิด (เปิดเองได้จากแผงชั้นข้อมูล) · เปลี่ยนโมดูล = กลับชุดมาตรฐาน */
+  const PRESETS = {
+    overview: { q: 'ที่ไหนต้องเร่งดำเนินการก่อน', metric: 'risk', on: ['choro', 'tambons'] },
+    prod: { q: 'ผลิตที่ไหน มากน้อยเท่าไร', metric: 'planted', on: ['choro', 'tambons'] },
+    cmd: { q: 'ระบาดที่ไหน และพันธุ์ต้านทาน/ทนทานไปถึงหรือยัง', metric: 'cmdPct', on: ['choro', 'tambons', 'resist'] },
+    rootrot: { q: 'ตำบลไหนเสี่ยงรากเน่าโคนเน่าจากน้ำท่วม ดิน และฤดูปลูก', metric: 'rrIndex', on: ['choro', 'flood'] },
+    soil: { q: 'มันสำปะหลังปลูกบนดินที่เหมาะสมหรือไม่', metric: 'soilPoorPct', on: ['soil', 'parcels'] }
+  };
+  const PRESET = (() => {
+    const m = location.search.match(/[?&]preset=([01])/);
+    if (m) U.store('kpp.preset', m[1] === '1' ? 1 : 0);
+    return U.store('kpp.preset') === 1;
+  })();
+  function applyPreset(m) {
+    const p = PRESETS[m]; if (!p) return;
+    ['choro', 'tambons', 'villages', 'parcels', 'disease', 'resist', 'flood', 'soil', 'series', 'networks'].forEach((k) => { L_[k].on = p.on.includes(k); });
+    L_.style = 'choro';
+    if (p.metric) L_.choro.metric = p.metric;
+    L_.choro.opacity = 0.8;
+    showQuestion(p.q);
+  }
+  function showQuestion(q) {
+    if (!map) { setTimeout(() => showQuestion(q), 300); return; }
+    let el = document.getElementById('mapQ');
+    if (!el) {
+      el = document.createElement('div'); el.id = 'mapQ'; el.className = 'map-q';
+      map.getContainer().appendChild(el); L.DomEvent.disableClickPropagation(el);
+    }
+    el.innerHTML = `<span class="map-q-tag">ทดลอง</span><b>${U.esc(q)}</b><button type="button" data-act="reset" title="กลับเป็นชุดชั้นข้อมูลมาตรฐานของโมดูลนี้">คืนค่าชุดมาตรฐาน</button><a href="?preset=0" title="กลับไปใช้แผนที่แบบเดิม">แบบเดิม</a>`;
+    el.querySelector('[data-act=reset]').onclick = () => KPP.App.setModule(module);
   }
   const tambonLevel = () => module === 'rootrot' || module === 'soil';
 
