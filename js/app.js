@@ -26,7 +26,7 @@ KPP.App = (function () {
     $('layerPanel').classList.add('collapsed');
     update(true);
     loadPlotMonitor();
-    KPP.Admin.init();
+    if (KPP.Admin) KPP.Admin.init();
     // แผนที่เต็มจอ: ถ้ากรอบแผนที่ยังไม่มีขนาดตอนเริ่ม (เช่น หน้าต่างอยู่เบื้องหลัง) ให้ปรับขนาดและจัดมุมมองใหม่เมื่อได้ขนาดจริง
     if (window.ResizeObserver) {
       let w0 = M.map.getSize().x, h0 = M.map.getSize().y;
@@ -1003,7 +1003,7 @@ KPP.App = (function () {
     $('fTambon').addEventListener('change', (e) => { state.tambon = e.target.value || null; update(false, true); });
     $('fRisk').addEventListener('change', (e) => { state.risk = e.target.value; update(); });
     $('btnReset').addEventListener('click', () => { Object.assign(state, { district: null, tambon: null, disease: 'all', risk: 'all' }); update(false, true); });
-    $('btnImport').addEventListener('click', () => KPP.Importer.open());
+    if ($('btnImport')) $('btnImport').addEventListener('click', () => KPP.Importer.open());
     $('btnAbout').addEventListener('click', openAbout);
     $('btnExport').addEventListener('click', (e) => { e.stopPropagation(); $('exportMenu').hidden = !$('exportMenu').hidden; });
     document.addEventListener('click', () => { $('exportMenu').hidden = true; });
